@@ -1,0 +1,230 @@
+﻿@page "/nedostovernost"
+@using перенос_бд_на_Web.Models
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationContext _context
+@inject IJSRuntime JS
+
+<PageTitle>Выявленные недостоверности ТМ</PageTitle>
+
+@code {
+    private List<NedostovernayaTM> tm = new List<NedostovernayaTM>();
+    private List<NedostovernayaTM> filteredTm = new List<NedostovernayaTM>();
+    private string currentSortColumn;
+    private bool isAscending = true;
+    private string searchTerm = string.Empty;
+    private bool showSearch = false;
+    private bool showChartInput = false;
+    private bool showChart = false;
+    private string tmIndexInput = string.Empty;
+    private List<TMValues> chartData = new List<TMValues>();
+    private bool chartDataAvailable = false;
+    private ElementReference chartElement;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            tm = await _context.tm.AsNoTracking().ToListAsync();
+            filteredTm = tm;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching data: {ex.Message}");
+        }
+    }
+
+    private void SortData(string column)
+    {
+        if (currentSortColumn == column)
+        {
+            isAscending = !isAscending;
+        }
+        else
+        {
+            currentSortColumn = column;
+            isAscending = true;
+        }
+
+        filteredTm = column switch
+        {
+            nameof(NedostovernayaTM.ID) => isAscending ? filteredTm.OrderBy(t => t.ID).ToList() : filteredTm.OrderByDescending(t => t.ID).ToList(),
+            nameof(NedostovernayaTM.IndexTm) => isAscending ? filteredTm.OrderBy(t => t.IndexTm).ToList() : filteredTm.OrderByDescending(t => t.IndexTm).ToList(),
+            nameof(NedostovernayaTM.CorrTm) => isAscending ? filteredTm.OrderBy(t => t.CorrTm).ToList() : filteredTm.OrderByDescending(t => t.CorrTm).ToList(),
+            nameof(NedostovernayaTM.Status) => isAscending ? filteredTm.OrderBy(t => t.Status).ToList() : filteredTm.OrderByDescending(t => t.Status).ToList(),
+            nameof(NedostovernayaTM.MaxLagranj) => isAscending ? filteredTm.OrderBy(t => t.MaxLagranj).ToList() : filteredTm.OrderByDescending(t => t.MaxLagranj).ToList(),
+            nameof(NedostovernayaTM.AvgLagranj) => isAscending ? filteredTm.OrderBy(t => t.AvgLagranj).ToList() : filteredTm.OrderByDescending(t => t.AvgLagranj).ToList(),
+            _ => filteredTm
+        };
+    }
+
+    private void SearchData()
+    {
+        if (string.IsNullOrEmpty(searchTerm))
+        {
+            filteredTm = tm;
+        }
+        else
+        {
+            filteredTm = tm.Where(t => t.IndexTm.ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        SortData(currentSortColumn);
+    }
+
+    private void ToggleSearch()
+    {
+        showSearch = !showSearch;
+        if (!showSearch)
+        {
+            searchTerm = string.Empty;
+            SearchData();
+        }
+    }
+
+    private void ResetSearch()
+    {
+        searchTerm = string.Empty;
+        filteredTm = tm;
+        SortData(currentSortColumn);
+    }
+
+    private void ShowChartInput()
+    {
+        showChartInput = true;
+        showChart = false; // Скрыть график при показе ввода для нового графика
+    }
+
+    private void HideChart()
+    {
+        showChart = false;
+        chartDataAvailable = false;
+    }
+
+    private string GetYAxisLabel(string privyazka)
+    {
+        return privyazka switch
+        {
+            "U" => "U, кВ",
+            "Pнач" or "Pкон" or "P_ген-р" or "Pген" or "Pнаг" => "P, МВт",
+            "Qнач" or "Qкон" or "Q_ген-р" or "Qген" or "Qнаг" => "Q, МВар",
+            _ => "Значения"
+        };
+    }
+
+    private async Task GenerateChart()
+    {
+        if (double.TryParse(tmIndexInput, out double tmIndex))
+        {
+            chartData = await _context.TMValues
+                .Where(tv => tv.IndexTM == tmIndex)
+                .OrderBy(tv => tv.OrderIndex) // Сортировка по OrderIndex
+                .AsNoTracking()
+                .ToListAsync();
+
+            if (chartData.Any())
+            {
+                chartDataAvailable = true;
+                showChart = true;
+
+                string chartTitle = $"Индекс ТМ: {chartData[0].IndexTM}, Наименование: {chartData[0].NameTM}";
+                string yAxisLabel = GetYAxisLabel(chartData[0].Privyazka);
+
+                // Переключение состояния компонента, чтобы гарантировать наличие элемента на странице
+                await Task.Delay(100); // Подождем немного
+                StateHasChanged();
+
+                // Проверка, что chartElement доступен
+                await JS.InvokeVoidAsync("generateChart", chartElement, chartData, chartTitle, yAxisLabel);
+            }
+            else
+            {
+                chartDataAvailable = false;
+                Console.WriteLine("Нет данных для указанного номера ТМ.");
+            }
+        }
+        else
+        {
+            chartDataAvailable = false;
+            Console.WriteLine("Некорректный ввод номера ТМ.");
+        }
+    }
+}
+
+<h2>Выявленные недостоверности ТМ</h2>
+
+<button @onclick="ShowChartInput" class="btn btn-primary mt-2">Показать график корреляции</button>
+
+@if (showSearch)
+{
+    <div class="mb-3">
+        <input @bind="searchTerm" placeholder="Поиск по Index TM" class="form-control" />
+        <button @onclick="SearchData" class="btn btn-primary mt-2">Искать</button>
+        <button @onclick="ResetSearch" class="btn btn-secondary mt-2 ml-2">Сбросить</button>
+    </div>
+}
+
+@if (showChartInput)
+{
+    <div class="mb-3">
+        <input @bind="tmIndexInput" placeholder="Введите номер ТМ" class="form-control" />
+        <button @onclick="GenerateChart" class="btn btn-primary mt-2">Построить график</button>
+    </div>
+}
+
+@if (chartDataAvailable && showChart)
+{
+    <div class="mt-4">
+        <button @onclick="HideChart" class="btn btn-secondary mb-2">Закрыть график</button>
+        <canvas id="chart" width="400" height="200" @ref="chartElement"></canvas>
+    </div>
+}
+
+@if (filteredTm == null || !filteredTm.Any())
+{
+    <p>Нет данных для отображения.</p>
+}
+else
+{
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.ID))">
+                    Идентификатор @(currentSortColumn == nameof(NedostovernayaTM.ID) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+                <th>
+                    <span @onclick="() => SortData(nameof(NedostovernayaTM.IndexTm))" style="cursor:pointer;">
+                        Индекс ТМ @(currentSortColumn == nameof(NedostovernayaTM.IndexTm) ? (isAscending ? "▲" : "▼") : "")
+                    </span>
+                    <button @onclick="ToggleSearch" class="btn btn-link" style="padding:0; margin-left:5px;">
+                        🔍
+                    </button>
+                </th>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.CorrTm))">
+                    Коэффициент корреляции @(currentSortColumn == nameof(NedostovernayaTM.CorrTm) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.Status))">
+                    Статус @(currentSortColumn == nameof(NedostovernayaTM.Status) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.MaxLagranj))">
+                    Максимальное значение лагранжиана @(currentSortColumn == nameof(NedostovernayaTM.MaxLagranj) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.AvgLagranj))">
+                    Среднее значение лагранжиана @(currentSortColumn == nameof(NedostovernayaTM.AvgLagranj) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var telemetry in filteredTm)
+            {
+                <tr>
+                    <td>@telemetry.ID</td>
+                    <td>@telemetry.IndexTm</td>
+                    <td>@telemetry.CorrTm</td>
+                    <td>@telemetry.Status</td>
+                    <td>@telemetry.MaxLagranj</td>
+                    <td>@telemetry.AvgLagranj</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+

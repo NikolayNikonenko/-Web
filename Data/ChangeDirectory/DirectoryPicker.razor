@@ -1,0 +1,12 @@
+﻿@inject IJSRuntime JS
+@code {
+    private ElementReference fileInput;
+
+    public async Task<string> PickDirectory()
+    {
+        await JS.InvokeVoidAsync("openDirectoryPicker", fileInput);
+        return await JS.InvokeAsync<string>("getSelectedDirectory");
+    }
+}
+
+<input type="file" style="display:none" webkitdirectory @ref="fileInput" />

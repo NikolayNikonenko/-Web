@@ -1,0 +1,236 @@
+﻿@page "/reliability-monitor"
+@using перенос_бд_на_Web.Models
+@using перенос_бд_на_Web.Data
+@using перенос_бд_на_Web.Services
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationContext DbContext
+@inject SlicesService SlicesService
+@inject IJSRuntime JS
+@inject ReliabilityAnalyzer ReliabilityAnalyzer
+@inject PowerImbalanceService PowerImbalanceService
+@implements IDisposable
+
+@code {
+    private bool isProcessing = false;
+    private int successfulCount = 0;
+    private int totalCount = 0;
+    private int currentProgress = 0;
+    private ElementReference chartElement;
+    private CancellationTokenSource cancellationTokenSource;
+    private DateTime? startDateTime;
+    private DateTime? endDateTime;
+    private string errorMessage;
+    private bool isChartReady = false;
+
+    private (ActivePowerImbalance imbalance, string sliceName) maxActivePowerImbalance;
+    private (ReactivePowerImbalance imbalance, string sliceName) maxReactivePowerImbalance;
+    private double averageTotalActivePowerImbalance;
+    private double averageTotalReactivePowerImbalance;
+    private double averageDeviation;
+    private double standardDeviation;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Первоначальная настройка, если необходимо
+        }
+        else if (isChartReady)
+        {
+            await DrawChart();
+            isChartReady = false; // Сбрасываем флаг
+        }
+    }
+
+    private async Task ProcessReliabilityData()
+    {
+        if (startDateTime == null || endDateTime == null)
+        {
+            errorMessage = "Необходимо указать начальную и конечную дату и время.";
+            return;
+        }
+
+        isProcessing = true;
+        cancellationTokenSource = new CancellationTokenSource();
+        errorMessage = null;
+        try
+        {
+            var filePaths = await SlicesService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value);
+
+            if (filePaths.Count == 0)
+            {
+                errorMessage = "Не найдено файлов в указанном интервале времени.";
+                return;
+            }
+
+            var result = await ReliabilityAnalyzer.AnalyzeReliabilityData(
+                startDateTime.Value,
+                endDateTime.Value,
+                filePaths,
+                UpdateProgress,
+                cancellationTokenSource.Token
+            );
+
+            successfulCount = result.successfulCount;
+            totalCount = result.totalCount;
+
+            maxActivePowerImbalance = await PowerImbalanceService.GetMaxActivePowerImbalanceAsync();
+            maxReactivePowerImbalance = await PowerImbalanceService.GetMaxReactivePowerImbalanceAsync();
+            averageTotalActivePowerImbalance = await PowerImbalanceService.GetAverageTotalActivePowerImbalanceAsync();
+            averageTotalReactivePowerImbalance = await PowerImbalanceService.GetAverageTotalReactivePowerImbalanceAsync();
+
+            averageDeviation = await CalculateAverageDeviationAsync();
+            standardDeviation = await CalculateStandardDeviationAsync();
+
+            isChartReady = true; // Устанавливаем флаг для отображения графика
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка при анализе данных: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+            cancellationTokenSource.Dispose();
+            cancellationTokenSource = null;
+        }
+
+        StateHasChanged(); // Обновляем интерфейс
+    }
+
+    private async Task<double> CalculateAverageDeviationAsync()
+    {
+        return await DbContext.TMValues
+            .Select(v => v.IzmerValue - v.OcenValue)
+            .AverageAsync();
+    }
+
+    private async Task<double> CalculateStandardDeviationAsync()
+    {
+        var deviations = await DbContext.TMValues
+            .Select(v => v.IzmerValue)
+            .ToListAsync();
+
+        var mean = deviations.Average();
+        var sumOfSquaresOfDifferences = deviations.Select(val => (val - mean) * (val - mean)).Sum();
+        return Math.Sqrt(sumOfSquaresOfDifferences / deviations.Count);
+    }
+
+    private async Task DrawChart()
+    {
+        if (successfulCount == 0 && totalCount == 0)
+        {
+            return;
+        }
+
+        await JS.InvokeVoidAsync("drawDonutChart", chartElement, successfulCount, totalCount);
+    }
+
+    private void UpdateProgress(int progress)
+    {
+        currentProgress = progress;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        cancellationTokenSource?.Cancel();
+        cancellationTokenSource?.Dispose();
+    }
+}
+
+<PageTitle>Мониторинг надежности</PageTitle>
+
+<h3>Мониторинг надежности</h3>
+
+<div>
+    <label>Начало: </label>
+    <input type="datetime-local" @bind="startDateTime" />
+    <label>Конец: </label>
+    <input type="datetime-local" @bind="endDateTime" />
+    <button class="btn btn-primary" @onclick="ProcessReliabilityData" disabled="@isProcessing">Вывести показатели надежности</button>
+</div>
+
+@if (isProcessing)
+{
+    <div class="progress mt-4">
+        <div class="progress-bar" role="progressbar" style="width: @currentProgress%" aria-valuenow="@currentProgress" aria-valuemin="0" aria-valuemax="100">@currentProgress%</div>
+    </div>
+}
+
+@if (totalCount > 0)
+{
+    <div class="mt-4 chart-container">
+        <canvas id="chart" @ref="chartElement"></canvas>
+    </div>
+}
+
+@if (maxActivePowerImbalance.imbalance != null)
+{
+    <div>
+        <h4>Максимальный небаланс по активной мощности</h4>
+        <p>Наименование среза: @maxActivePowerImbalance.sliceName</p>
+        <p>Наименование узла: @maxActivePowerImbalance.imbalance.name_p</p>
+        <p>Небаланс: @maxActivePowerImbalance.imbalance.p_neb_p</p>
+    </div>
+}
+
+@if (maxReactivePowerImbalance.imbalance != null)
+{
+    <div>
+        <h4>Максимальный небаланс по реактивной мощности</h4>
+        <p>Наименование среза: @maxReactivePowerImbalance.sliceName</p>
+        <p>Наименование узла: @maxReactivePowerImbalance.imbalance.name_q</p>
+        <p>Небаланс: @maxReactivePowerImbalance.imbalance.q_neb_q</p>
+    </div>
+}
+
+@if (averageTotalActivePowerImbalance != 0)
+{
+    <div>
+        <h4>Усредненный суммарный небаланс по активной мощности</h4>
+        <p>@averageTotalActivePowerImbalance</p>
+    </div>
+}
+
+@if (averageTotalReactivePowerImbalance != 0)
+{
+    <div>
+        <h4>Усредненный суммарный небаланс по реактивной мощности</h4>
+        <p>@averageTotalReactivePowerImbalance</p>
+    </div>
+}
+
+@if (averageDeviation != 0)
+{
+    <div>
+        <h4>Среднее по выборке математическое ожидание отклонения измеренного от оцененного</h4>
+        <p>@averageDeviation</p>
+    </div>
+}
+
+@if (standardDeviation != 0)
+{
+    <div>
+        <h4>Среднеквадратичное отклонение измеренных значений</h4>
+        <p>@standardDeviation</p>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <p class="text-danger">@errorMessage</p>
+}
+
+<style>
+    .chart-container {
+        width: 25vw;
+        height: 25vh;
+        position: relative;
+    }
+
+        .chart-container canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+</style>

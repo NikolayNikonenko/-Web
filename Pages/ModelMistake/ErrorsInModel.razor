@@ -1,0 +1,129 @@
+﻿@page "/modelError"
+@using перенос_бд_на_Web.Models
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationContext _modelContext
+<PageTitle>Ошибки в модели</PageTitle>
+
+@code {
+    private List<ModelErrors> modelErrors = new List<ModelErrors>();
+    private List<ModelErrors> filtredModelErrors = new List<ModelErrors>();
+    private string currentSortColumn;
+    private bool isAscending = true;
+    private string searchTerm = string.Empty;
+    private bool showSearch = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Console.WriteLine("Fetching data from the database...");
+            modelErrors = await _modelContext.modelErrors.AsNoTracking().ToListAsync();
+            Console.WriteLine($"Fetched {modelErrors.Count} records.");
+            filtredModelErrors = modelErrors;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка при получении данных: {ex.Message}");
+        }
+    }
+
+    private void SortData(string column)
+    {
+        if (currentSortColumn == column)
+        {
+            isAscending = !isAscending;
+        }
+        else
+        {
+            currentSortColumn = column;
+            isAscending = true;
+        }
+
+        filtredModelErrors = column switch
+        {
+            nameof(ModelErrors.ID) => isAscending ? filtredModelErrors.OrderBy(t => t.ID).ToList() : filtredModelErrors.OrderByDescending(t => t.ID).ToList(),
+            nameof(ModelErrors.IndexTm) => isAscending ? filtredModelErrors.OrderBy(t => t.IndexTm).ToList() : filtredModelErrors.OrderByDescending(t => t.IndexTm).ToList(),
+            nameof(ModelErrors.ErrorType) => isAscending ? filtredModelErrors.OrderBy(t => t.ErrorType).ToList() : filtredModelErrors.OrderByDescending(t => t.ErrorType).ToList(),
+            _ => filtredModelErrors
+        };
+    }
+
+    private void SearchData()
+    {
+        if (string.IsNullOrEmpty(searchTerm))
+        {
+            filtredModelErrors = modelErrors;
+        }
+        else
+        {
+            filtredModelErrors = modelErrors.Where(t => t.IndexTm.ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        SortData(currentSortColumn);
+    }
+
+    private void ToggleSearch()
+    {
+        showSearch = !showSearch;
+        if (!showSearch)
+        {
+            searchTerm = string.Empty;
+            SearchData();
+        }
+    }
+
+    private void ResetSearch()
+    {
+        searchTerm = string.Empty;
+        filtredModelErrors = modelErrors;
+        SortData(currentSortColumn);
+    }
+}
+
+<h2>Выявление ошибок в модели</h2>
+
+@if (showSearch)
+{
+    <div class="mb-3">
+        <input @bind="searchTerm" placeholder="Поиск по номеру ТМ" class="form-control" />
+        <button @onclick="SearchData" class="btn btn-primary mt-2">Искать</button>
+        <button @onclick="ResetSearch" class="btn btn-secondary mt-2 ml-2">Сбросить</button>
+    </div>
+}
+@if (filtredModelErrors == null || !filtredModelErrors.Any())
+{
+    <p>Нет данных для отображения.</p>
+}
+else
+{
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th @onclick="() => SortData(nameof(ModelErrors.ID))">
+                    Идентификатор @(currentSortColumn == nameof(ModelErrors.ID) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+                <th>
+                    <span @onclick="() => SortData(nameof(ModelErrors.IndexTm))" style="cursor:pointer;">
+                        Индекс ТМ @(currentSortColumn == nameof(ModelErrors.IndexTm) ? (isAscending ? "▲" : "▼") : "")
+                    </span>
+                    <button @onclick="ToggleSearch" class="btn btn-link" style="padding:0; margin-left:5px;">
+                        🔍
+                    </button>
+                </th>
+                <th @onclick="() => SortData(nameof(ModelErrors.ErrorType))">
+                    Тип ошибки @(currentSortColumn == nameof(ModelErrors.ErrorType) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var modelError in filtredModelErrors)
+            {
+                <tr>
+                    <td>@modelError.ID</td>
+                    <td>@modelError.IndexTm</td>
+                    <td>@modelError.ErrorType</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
