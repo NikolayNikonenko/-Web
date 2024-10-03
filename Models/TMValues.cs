@@ -13,6 +13,7 @@
         public double Correlation { get; set; }
         public string Status { get; set; }
         public double OrderIndex { get; set;  }
+        public double Lagranj { get; set; }
        // public string SliceFilePath { get; set; }
 
     }

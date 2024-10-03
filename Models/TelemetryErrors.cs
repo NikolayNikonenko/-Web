@@ -8,6 +8,7 @@
         public string Status { get; set; }
         public double MaxLagranj { get; set; }
         public double AvgLagranj { get; set; }
+        public string NameTM { get; set; }
 
     }
 

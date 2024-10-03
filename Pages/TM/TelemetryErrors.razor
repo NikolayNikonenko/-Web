@@ -1,10 +1,29 @@
 ﻿@page "/nedostovernost"
 @using перенос_бд_на_Web.Models
 @using Microsoft.EntityFrameworkCore
+@using перенос_бд_на_Web.Models
+@using перенос_бд_на_Web.Data
+@using перенос_бд_на_Web.Services
+@using Microsoft.EntityFrameworkCore
 @inject ApplicationContext _context
+@inject CorrData corr
 @inject IJSRuntime JS
 
 <PageTitle>Выявленные недостоверности ТМ</PageTitle>
+
+<style>
+    .status-dostovernaya {
+        background-color: lightgreen;
+    }
+
+    .status-somnitelnaya {
+        background-color: lightyellow;
+    }
+
+    .status-nedostovernaya {
+        background-color: lightcoral;
+    }
+</style>
 
 @code {
     private List<NedostovernayaTM> tm = new List<NedostovernayaTM>();
@@ -147,9 +166,24 @@
             Console.WriteLine("Некорректный ввод номера ТМ.");
         }
     }
+
+    private string GetRowClass(string status)
+    {
+        return status switch
+        {
+            "Достоверная" => "status-dostovernaya",
+            "Сомнительная" => "status-somnitelnaya",
+            "Недостоверная" => "status-nedostovernaya",
+            _ => string.Empty
+        };
+    }
+
 }
 
 <h2>Выявленные недостоверности ТМ</h2>
+
+<button @onclick="corr.CalculationCorrelation" class="btn btn-primary mt-2">Показать хуй</button>
+
 
 <button @onclick="ShowChartInput" class="btn btn-primary mt-2">Показать график корреляции</button>
 
@@ -215,7 +249,7 @@ else
         <tbody>
             @foreach (var telemetry in filteredTm)
             {
-                <tr>
+                <tr class="@GetRowClass(telemetry.Status)">
                     <td>@telemetry.ID</td>
                     <td>@telemetry.IndexTm</td>
                     <td>@telemetry.CorrTm</td>

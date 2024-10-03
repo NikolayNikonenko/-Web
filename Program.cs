@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using перенос_бд_на_Web.Data;
 using перенос_бд_на_Web.Models;
 using перенос_бд_на_Web.Services;
+using перенос_бд_на_Web.Pages.TM;
 
 namespace перенос_бд_на_Web
 {
@@ -31,6 +32,8 @@ namespace перенос_бд_на_Web
             builder.Services.AddDbContext<ApplicationContext>(options =>
                 options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
             builder.Services.AddScoped<SlicesService>();
+            builder.Services.AddScoped<CorrData>();
+
             builder.Services.AddScoped<ReliabilityAnalyzer>();
             builder.Services.AddLogging();
             builder.Services.AddControllers();

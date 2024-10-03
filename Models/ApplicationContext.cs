@@ -14,6 +14,11 @@ namespace перенос_бд_на_Web.Models
         { 
             Database.EnsureCreated();
         }
+        //protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        //{
+        //    optionsBuilder.UseNpgsql("Host=localhost;Port = 5432;Database=БД_ИТ_диплом;Username=postgres;Password=HgdMoxN2");
+           
+        //}
 
     }
 }

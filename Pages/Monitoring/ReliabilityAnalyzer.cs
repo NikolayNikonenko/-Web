@@ -114,9 +114,10 @@ namespace перенос_бд_на_Web
 
         public bool AnalyzeFile(string filePath)
         {
+            IRastr Rastr = new Rastr();
             try
             {
-                IRastr Rastr = new Rastr();
+                //IRastr Rastr = new Rastr();
                 Rastr.Load(RG_KOD.RG_REPL, filePath, "");
                 // Задержка для имитации реального времени загрузки
                 Thread.Sleep(100);
