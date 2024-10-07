@@ -9,6 +9,7 @@
         public double MaxLagranj { get; set; }
         public double AvgLagranj { get; set; }
         public string NameTM { get; set; }
+        //public DateTime Timestamp { get; set; }
 
     }
 

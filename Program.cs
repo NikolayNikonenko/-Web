@@ -30,8 +30,15 @@ namespace перенос_бд_на_Web
             builder.Services.AddSingleton<WeatherForecastService>();
             builder.Services.AddScoped<PowerImbalanceService>();
             builder.Services.AddDbContext<ApplicationContext>(options =>
-                options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+            options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+
+
             builder.Services.AddScoped<SlicesService>();
+
+
+            builder.Services.AddScoped<SliceService>();
+
             builder.Services.AddScoped<CorrData>();
 
             builder.Services.AddScoped<ReliabilityAnalyzer>();

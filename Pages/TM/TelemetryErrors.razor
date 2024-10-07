@@ -5,6 +5,7 @@
 @using перенос_бд_на_Web.Data
 @using перенос_бд_на_Web.Services
 @using Microsoft.EntityFrameworkCore
+@inject SliceService sliceService
 @inject ApplicationContext _context
 @inject CorrData corr
 @inject IJSRuntime JS
@@ -28,6 +29,7 @@
 @code {
     private List<NedostovernayaTM> tm = new List<NedostovernayaTM>();
     private List<NedostovernayaTM> filteredTm = new List<NedostovernayaTM>();
+    private List<TMValues> filteredTMValues = new List<TMValues>();
     private string currentSortColumn;
     private bool isAscending = true;
     private string searchTerm = string.Empty;
@@ -38,18 +40,30 @@
     private List<TMValues> chartData = new List<TMValues>();
     private bool chartDataAvailable = false;
     private ElementReference chartElement;
+    private DateTime? startTime;
+    private DateTime? endTime;
+    private bool showTimeIntervalInput = false;
 
     protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            tm = await _context.tm.AsNoTracking().ToListAsync();
-            filteredTm = tm;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error fetching data: {ex.Message}");
-        }
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        //using (var context = new ApplicationContext()) // Передайте нужные параметры
+        //{
+            try
+            {
+                // Загрузка данных о недостоверностях
+                tm = await _context.tm.AsNoTracking().ToListAsync();
+                filteredTm = tm;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching data: {ex.Message}");
+            }
+        //}
     }
 
     private void SortData(string column)
@@ -177,10 +191,49 @@
             _ => string.Empty
         };
     }
+    private async Task ApplyTimeIntervalFilter()
+    {
+        if (startTime.HasValue && endTime.HasValue)
+        {
+            // Используем SliceService для получения отфильтрованных данных
+            var filePaths = await sliceService.GetFilePathsInRangeAsync(startTime.Value, endTime.Value);
+
+            // Получаем идентификаторы срезов, соответствующие отфильтрованным путям
+            var sliceIdsInRange = await _context.slices
+                .Where(s => filePaths.Contains(s.SlicePath))
+                .Select(s => s.SliceID)
+                .ToListAsync();
+
+            // Фильтруем данные TMValues по идентификаторам срезов
+            filteredTMValues = await _context.TMValues
+                .Where(t => sliceIdsInRange.Contains(t.SliceID)) // Предполагается, что в TMValues есть поле SliceId
+                .ToListAsync();
+        }
+        else
+        {
+            // Если временной промежуток не выбран, возвращаем все данные
+            filteredTMValues = await _context.TMValues.ToListAsync(); 
+        }
+    }
 
 }
 
+@if (showTimeIntervalInput)
+{
+    <div class="mb-3">
+        <label>Начало временного промежутка:</label>
+        <input type="datetime-local" @bind="startTime" class="form-control" />
+        <label>Конец временного промежутка:</label>
+        <input type="datetime-local" @bind="endTime" class="form-control" />
+        <button @onclick="ApplyTimeIntervalFilter" class="btn btn-primary mt-2">Применить фильтр</button>
+    </div>
+}
+
 <h2>Выявленные недостоверности ТМ</h2>
+
+<button @onclick="() => showTimeIntervalInput = !showTimeIntervalInput" class="btn btn-primary mt-2">
+    @(showTimeIntervalInput ? "Скрыть выбор времени" : "Показать выбор времени")
+</button>
 
 <button @onclick="corr.CalculationCorrelation" class="btn btn-primary mt-2">Показать хуй</button>
 

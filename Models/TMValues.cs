@@ -10,9 +10,10 @@
         public int Id1 { get; set; }
         public string NameTM { get; set; }
         public string NumberOfSrez { get; set; }
-        public double Correlation { get; set; }
-        public string Status { get; set; }
+        //public double Correlation { get; set; }
+        //public string Status { get; set; }
         public double OrderIndex { get; set;  }
+        public Guid SliceID { get; set; }
         public double Lagranj { get; set; }
        // public string SliceFilePath { get; set; }
 
