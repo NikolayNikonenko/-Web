@@ -29,7 +29,7 @@
 @code {
     private List<NedostovernayaTM> tm = new List<NedostovernayaTM>();
     private List<NedostovernayaTM> filteredTm = new List<NedostovernayaTM>();
-    private List<TMValues> filteredTMValues = new List<TMValues>();
+    public List<TMValues> filteredTMValues = new List<TMValues>();
     private string currentSortColumn;
     private bool isAscending = true;
     private string searchTerm = string.Empty;
@@ -235,7 +235,10 @@
     @(showTimeIntervalInput ? "Скрыть выбор времени" : "Показать выбор времени")
 </button>
 
-<button @onclick="corr.CalculationCorrelation" class="btn btn-primary mt-2">Показать хуй</button>
+<button @onclick="() => corr.CalculationCorrelation(filteredTMValues)" class="btn btn-primary mt-2">
+    Показать корреляцию
+</button>
+
 
 
 <button @onclick="ShowChartInput" class="btn btn-primary mt-2">Показать график корреляции</button>

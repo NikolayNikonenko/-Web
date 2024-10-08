@@ -4,7 +4,7 @@ using System.Linq;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using перенос_бд_на_Web.Models;
 using Microsoft.EntityFrameworkCore;
-
+using перенос_бд_на_Web.Pages.TM;
 namespace перенос_бд_на_Web.Pages.TM
 {
 
@@ -34,36 +34,39 @@ namespace перенос_бд_на_Web.Pages.TM
             _correlation_Context = db;
         }
 
-        public async Task CalculationCorrelation()
+
+        public async Task CalculationCorrelation(List<TMValues> filteredTMValues)
         {
-                // Извлекаем все уникальные индексы телеметрии
-                var uniqueOrdersTM = await _correlation_Context.TMValues
+            var a = filteredTMValues;
+            // Извлекаем все уникальные индексы телеметрии
+            var uniqueOrdersTM = filteredTMValues
                     .Select(s => s.IndexTM)
                     .Distinct()
-                    .ToListAsync();
+                    .OrderBy(indexTM => indexTM)
+                    .ToList();
 
             var answer = new Dictionary<int, double>();
 
             foreach (var uniqueOrderTM in uniqueOrdersTM)
             {
                 // Получаем все измеренные и оценочные значения для данного индекса телеметрии
-                var allIzmerTM = await _correlation_Context.TMValues
+                var allIzmerTM = filteredTMValues
                     .Where(t => t.IndexTM == uniqueOrderTM)
                     .OrderBy(e => e.NumberOfSrez)
                     .Select(s => s.IzmerValue)
-                    .ToListAsync();
+                    .ToList();
 
-                var allOcenTM = await _correlation_Context.TMValues
+                var allOcenTM = filteredTMValues
                     .Where(t => t.IndexTM == uniqueOrderTM)
                     .OrderBy(e => e.NumberOfSrez)
                     .Select(s => s.OcenValue)
-                    .ToListAsync();
+                    .ToList();
 
                 // Получаем данные по Lagranj
-                var lagranjValues = await _correlation_Context.TMValues
+                var lagranjValues = filteredTMValues
                     .Where(t => t.IndexTM == uniqueOrderTM)
                     .Select(s => s.Lagranj) // Убедитесь, что у вас есть свойство Lagranj в классе TMValues
-                    .ToListAsync();
+                    .ToList();
 
                 if (allIzmerTM.Count == 0 || allOcenTM.Count == 0)
                     continue; // Пропускаем, если нет данных для корреляции
@@ -101,10 +104,10 @@ namespace перенос_бд_на_Web.Pages.TM
 
 
                 // Извлекаем значение NameTM для текущего уникального индекса TM
-                var nameTM = await _correlation_Context.TMValues
+                var nameTM = filteredTMValues
                     .Where(t => t.IndexTM == uniqueOrderTM)
                     .Select(t => t.NameTM)
-                    .FirstOrDefaultAsync();
+                    .FirstOrDefault();
 
                 // Запись статуса в базу данных для телеметрии с данным индексом
                 var correlation_context = await _correlation_Context.tm
