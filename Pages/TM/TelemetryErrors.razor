@@ -43,6 +43,7 @@
     private DateTime? startTime;
     private DateTime? endTime;
     private bool showTimeIntervalInput = false;
+    private List<NedostovernayaTM> tmData = new List<NedostovernayaTM>();
 
     protected override async Task OnInitializedAsync()
     {
@@ -147,10 +148,16 @@
     {
         if (double.TryParse(tmIndexInput, out double tmIndex))
         {
-            chartData = await _context.TMValues
+            chartData = filteredTMValues
                 .Where(tv => tv.IndexTM == tmIndex)
-                .OrderBy(tv => tv.OrderIndex) // Сортировка по OrderIndex
-                .AsNoTracking()
+                .OrderBy(tv => tv.NumberOfSrez) // Сортировка по OrderIndex
+                .ThenBy(tv => tv.OrderIndex) // Дополнительная сортировка по OrderIndex, если необходимо
+                .ToList();
+
+
+            // Извлечение данных из таблицы tm для текущего tmIndex
+            var tmData = await _context.tm
+                .Where(tm => tm.IndexTm == tmIndex)
                 .ToListAsync();
 
             if (chartData.Any())
@@ -166,7 +173,7 @@
                 StateHasChanged();
 
                 // Проверка, что chartElement доступен
-                await JS.InvokeVoidAsync("generateChart", chartElement, chartData, chartTitle, yAxisLabel);
+                await JS.InvokeVoidAsync("generateChart", chartElement, chartData, tmData, chartTitle, yAxisLabel);
             }
             else
             {

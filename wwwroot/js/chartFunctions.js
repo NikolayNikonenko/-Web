@@ -1,6 +1,6 @@
 ﻿let currentChart = null;
 
-function generateChart(chartElement, chartData, chartTitle, yAxisLabel) {
+function generateChart(chartElement, chartData, tmData, chartTitle, yAxisLabel) {
     if (!chartElement || !(chartElement instanceof HTMLCanvasElement)) {
         console.error('chartElement не является элементом canvas');
         return;
@@ -61,6 +61,9 @@ function generateChart(chartElement, chartData, chartTitle, yAxisLabel) {
         tension: 0.1
     });
 
+    // Получение данных о корреляции и статусе из таблицы tm
+    const tmData = await getTmData(chartData.map(data => data.indexTM));
+
     // Создание нового графика
     const ctx = chartElement.getContext('2d');
     currentChart = new Chart(ctx, {
@@ -98,6 +101,10 @@ function generateChart(chartElement, chartData, chartTitle, yAxisLabel) {
                                 datasetLabel.includes("Измеренные значения") ? d.izmerValue === tooltipItem.raw : d.ocenValue === tooltipItem.raw
                             ));
 
+                            // Получение коэффициента корреляции и статуса из tmData
+                            const tmInfo = tmData.find(tm => tm.indexTM === data.indexTM);
+                            const correlation = tmInfo ? tmInfo.correlation : 'N/A';
+                            const status = tmInfo ? tmInfo.status : 'N/A';
                             const id1 = data ? data.id1 : 'N/A';
 
                             if (datasetLabel.includes("Измеренные значения")) {
@@ -111,8 +118,8 @@ function generateChart(chartElement, chartData, chartTitle, yAxisLabel) {
                                     `Узел: ${id1}`,
                                     `Тип: Оцененное`,
                                     `Значение: ${tooltipItem.raw}`,
-                                    `Коэффициент корреляции: ${data ? data.correlation : 'N/A'}`,
-                                    `Статус ТМ: ${data ? data.status : 'N/A'}`
+                                    `Коэффициент корреляции: ${correlation}`,
+                                    `Статус ТМ: ${status}`
                                 ];
                             }
                         }
@@ -121,4 +128,14 @@ function generateChart(chartElement, chartData, chartTitle, yAxisLabel) {
             }
         }
     });
+}
+// Функция для получения данных из таблицы tm
+async function getTmData(indexTMs) {
+    // Замените этот код на ваш API-запрос или запрос к базе данных
+    const response = await fetch(`/api/tm?indexTMs=${indexTMs.join(',')}`);
+    if (!response.ok) {
+        console.error('Ошибка при получении данных из таблицы tm');
+        return [];
+    }
+    return await response.json(); // Предполагается, что данные приходят в формате JSON
 }
