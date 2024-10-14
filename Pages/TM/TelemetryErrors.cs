@@ -1,72 +1,116 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using перенос_бд_на_Web.Models;
 using Microsoft.EntityFrameworkCore;
-using перенос_бд_на_Web.Pages.TM;
+using System.Globalization;
+
 namespace перенос_бд_на_Web.Pages.TM
 {
-
     public class SomeDataTM : PageModel
     {
         private readonly ApplicationContext _telemetry_Context;
 
         public List<NedostovernayaTM> Tm { get; set; }
-        //public SomeDataTM(ApplicationContext db)
-        //{
-            //_telemetry_Context = db;
-        //}
+
+        // Если у вас используется Dependency Injection, то конструктор может быть следующим:
+        public SomeDataTM(ApplicationContext db)
+        {
+            _telemetry_Context = db;
+        }
+
         public void OnGet()
         {
             Tm = _telemetry_Context.tm.AsNoTracking().ToList();
         }
     }
-    
-    public class CorrData 
-        {
-        
+
+    public class CorrData
+    {
         private readonly ApplicationContext _correlation_Context;
-        public List<TMValues> TMValues { get; set; }
+
+        // Добавим поля для хранения данных
+        public List<TMValues> TMValues { get; set; } = new List<TMValues>();
+        private bool wasFilteringPerformed = false; // Флаг, был ли выполнен фильтр или прореживание
 
         public CorrData(ApplicationContext db)
         {
             _correlation_Context = db;
         }
 
-
-        public async Task CalculationCorrelation(List<TMValues> filteredTMValues)
+        // Метод для установки флага прореживания
+        public void SetFilteringPerformed(bool performed)
         {
-            var a = filteredTMValues;
+            wasFilteringPerformed = performed;
+        }
+
+        public async Task CalculationCorrelation(
+            List<TMValues> filteredTMValues,
+            DateTime? startTime = null,
+            DateTime? endTime = null,
+            bool useThinning = false,
+            int thinningStep = 1)
+        {
+            // Проверяем, есть ли отфильтрованные данные
+            if ((filteredTMValues == null || !filteredTMValues.Any()) && (startTime.HasValue && endTime.HasValue))
+            {
+                // Если нет, то загружаем данные из базы, отфильтрованные по времени
+                var allTMValues = await _correlation_Context.TMValues.AsNoTracking().ToListAsync();
+
+                filteredTMValues = allTMValues
+                    .Where(t => DateTime.TryParseExact(t.NumberOfSrez, "HH_mm_ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime numberOfSrezTime) &&
+                                numberOfSrezTime >= startTime.Value && numberOfSrezTime <= endTime.Value)
+                    .ToList();
+
+                Console.WriteLine("Данные загружены из базы данных по заданному интервалу времени.");
+            }
+            else if (filteredTMValues == null || !filteredTMValues.Any())
+            {
+                // Если нет данных и время не задано, загружаем все данные
+                filteredTMValues = await _correlation_Context.TMValues.AsNoTracking().ToListAsync();
+
+                Console.WriteLine("Данные загружены из базы данных без фильтрации по времени.");
+            }
+
+            if (!filteredTMValues.Any())
+            {
+                Console.WriteLine("Нет данных для расчета корреляции.");
+                return;
+            }
+
             // Извлекаем все уникальные индексы телеметрии
             var uniqueOrdersTM = filteredTMValues
-                    .Select(s => s.IndexTM)
-                    .Distinct()
-                    .OrderBy(indexTM => indexTM)
-                    .ToList();
+                .Select(s => s.IndexTM)
+                .Distinct()
+                .OrderBy(indexTM => indexTM)
+                .ToList();
 
             var answer = new Dictionary<int, double>();
 
             foreach (var uniqueOrderTM in uniqueOrdersTM)
             {
-                // Получаем все измеренные и оценочные значения для данного индекса телеметрии
-                var allIzmerTM = filteredTMValues
+                // Получаем данные для текущего индекса телеметрии
+                var tmValuesForIndex = filteredTMValues
                     .Where(t => t.IndexTM == uniqueOrderTM)
                     .OrderBy(e => e.NumberOfSrez)
-                    .Select(s => s.IzmerValue)
                     .ToList();
 
-                var allOcenTM = filteredTMValues
-                    .Where(t => t.IndexTM == uniqueOrderTM)
-                    .OrderBy(e => e.NumberOfSrez)
-                    .Select(s => s.OcenValue)
-                    .ToList();
+                // Получаем измеренные и оценочные значения
+                var allIzmerTM = tmValuesForIndex.Select(s => s.IzmerValue).ToList();
+                var allOcenTM = tmValuesForIndex.Select(s => s.OcenValue).ToList();
 
-                // Получаем данные по Lagranj
-                var lagranjValues = filteredTMValues
-                    .Where(t => t.IndexTM == uniqueOrderTM)
-                    .Select(s => s.Lagranj) // Убедитесь, что у вас есть свойство Lagranj в классе TMValues
-                    .ToList();
+                // Получаем данные по Лагранжу
+                var lagranjValues = tmValuesForIndex.Select(s => s.Lagranj).ToList();
+
+                if (useThinning)
+                {
+                    // Применяем прореживание
+                    allIzmerTM = allIzmerTM.Where((value, index) => index % thinningStep == 0).ToList();
+                    allOcenTM = allOcenTM.Where((value, index) => index % thinningStep == 0).ToList();
+                    lagranjValues = lagranjValues.Where((value, index) => index % thinningStep == 0).ToList();
+                }
 
                 if (allIzmerTM.Count == 0 || allOcenTM.Count == 0)
                     continue; // Пропускаем, если нет данных для корреляции
@@ -90,7 +134,9 @@ namespace перенос_бд_на_Web.Pages.TM
                 }
 
                 double denominator = Math.Sqrt(varianceMeasured * varianceEstimated);
-                double correlation = covariance / denominator;
+
+                // Проверяем на ноль, чтобы избежать деления на ноль
+                double correlation = denominator != 0 ? covariance / denominator : 0;
                 answer[(int)uniqueOrderTM] = correlation;
 
                 // Определяем статус на основе корреляции
@@ -99,49 +145,58 @@ namespace перенос_бд_на_Web.Pages.TM
                 // Рассчитываем максимальные и средние значения Лагранжа
                 double maxPositiveLagrange = lagranjValues.Where(x => x > 0).DefaultIfEmpty(0).Max();
                 double maxNegativeLagrange = lagranjValues.Where(x => x < 0).DefaultIfEmpty(0).Min();
-                double avgLagrange = lagranjValues.Any() ? lagranjValues.Average() : 0; // Проверка на пустую коллекцию
-                double maxAbsoluteLagrange = Math.Abs(maxPositiveLagrange) > Math.Abs(maxNegativeLagrange) ? maxPositiveLagrange : maxNegativeLagrange;
+                double avgLagrange = lagranjValues.Any() ? lagranjValues.Average() : 0;
+                double maxAbsoluteLagrange = Math.Abs(maxPositiveLagrange) > Math.Abs(maxNegativeLagrange)
+                    ? maxPositiveLagrange
+                    : maxNegativeLagrange;
 
-
-                // Извлекаем значение NameTM для текущего уникального индекса TM
-                var nameTM = filteredTMValues
-                    .Where(t => t.IndexTM == uniqueOrderTM)
+                // Извлекаем значение NameTM для текущего индекса TM
+                var nameTM = tmValuesForIndex
                     .Select(t => t.NameTM)
                     .FirstOrDefault();
 
-                // Запись статуса в базу данных для телеметрии с данным индексом
-                var correlation_context = await _correlation_Context.tm
-                    .Where(z => z.IndexTm == uniqueOrderTM)
-                    .ToListAsync();
+                // Проверяем, есть ли уже запись в базе данных
+                var existingRecord = await _correlation_Context.tm
+                    .FirstOrDefaultAsync(z => z.IndexTm == uniqueOrderTM);
 
-                var newRecord = new NedostovernayaTM
+                if (existingRecord != null)
                 {
-                    IndexTm = uniqueOrderTM,
-                    CorrTm = correlation,
-                    Status = status,
-                    NameTM = nameTM,
-                    MaxLagranj = maxAbsoluteLagrange, // Записываем максимальный Лагранж
-                    AvgLagranj = avgLagrange // Записываем средний Лагранж
+                    // Обновляем существующую запись
+                    existingRecord.CorrTm = correlation;
+                    existingRecord.Status = status;
+                    existingRecord.NameTM = nameTM;
+                    existingRecord.MaxLagranj = maxAbsoluteLagrange;
+                    existingRecord.AvgLagranj = avgLagrange;
+                }
+                else
+                {
+                    // Создаем новую запись
+                    var newRecord = new NedostovernayaTM
+                    {
+                        IndexTm = uniqueOrderTM,
+                        CorrTm = correlation,
+                        Status = status,
+                        NameTM = nameTM,
+                        MaxLagranj = maxAbsoluteLagrange,
+                        AvgLagranj = avgLagrange
+                    };
 
-                };
+                    _correlation_Context.tm.Add(newRecord);
+                }
 
-                _correlation_Context.tm.Add(newRecord);
                 try
                 {
                     // Сохраняем изменения в базе данных
                     await _correlation_Context.SaveChangesAsync();
                     Console.WriteLine($"Телеметрия под номером {uniqueOrderTM} успешно сохранена в БД");
                 }
-                catch (DbUpdateException ex) 
+                catch (DbUpdateException ex)
                 {
-                    Console.WriteLine($"Ошибка при сохранении данных: { ex.Message}");
+                    Console.WriteLine($"Ошибка при сохранении данных: {ex.Message}");
                 }
-                
             }
-            Console.WriteLine("Усе");
+            Console.WriteLine("Расчет корреляции завершен.");
         }
-
-        
 
         string DetermineStatus(double correlation)
         {
@@ -150,11 +205,7 @@ namespace перенос_бд_на_Web.Pages.TM
             if (correlation >= 0.5 && correlation <= 1) return "Достоверная";
             return "Неопределено";
         }
-
-
-           
     }
-        
 }
 
 

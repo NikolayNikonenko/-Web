@@ -44,6 +44,9 @@
     private DateTime? endTime;
     private bool showTimeIntervalInput = false;
     private List<NedostovernayaTM> tmData = new List<NedostovernayaTM>();
+    private bool showThinningInput = false; // Показывать ли поле для ввода интервала прореживания
+    private int thinningInterval = 1; // Интервал прореживания по умолчанию
+
 
     protected override async Task OnInitializedAsync()
     {
@@ -54,16 +57,16 @@
     {
         //using (var context = new ApplicationContext()) // Передайте нужные параметры
         //{
-            try
-            {
-                // Загрузка данных о недостоверностях
-                tm = await _context.tm.AsNoTracking().ToListAsync();
-                filteredTm = tm;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error fetching data: {ex.Message}");
-            }
+        try
+        {
+            // Загрузка данных о недостоверностях
+            tm = await _context.tm.AsNoTracking().ToListAsync();
+            filteredTm = tm;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching data: {ex.Message}");
+        }
         //}
     }
 
@@ -198,7 +201,7 @@
             _ => string.Empty
         };
     }
-    private async Task ApplyTimeIntervalFilter()
+    private async Task ApplyTimeIntervalFilter(bool isThinning = false)
     {
         if (startTime.HasValue && endTime.HasValue)
         {
@@ -215,11 +218,28 @@
             filteredTMValues = await _context.TMValues
                 .Where(t => sliceIdsInRange.Contains(t.SliceID)) // Предполагается, что в TMValues есть поле SliceId
                 .ToListAsync();
+
+            // Применяем прореживание данных, если это необходимо
+            if (isThinning)
+            {
+                int thinningFactor = thinningInterval; 
+                filteredTMValues = filteredTMValues
+                    .Where((t, index) => index % thinningFactor == 0)
+                    .ToList();
+            }
         }
         else
         {
             // Если временной промежуток не выбран, возвращаем все данные
-            filteredTMValues = await _context.TMValues.ToListAsync(); 
+            filteredTMValues = await _context.TMValues.ToListAsync();
+            // Применяем прореживание данных, если это необходимо
+            if (isThinning)
+            {
+                int thinningFactor = 10; // Например, берем каждую 10-ую запись
+                filteredTMValues = filteredTMValues
+                    .Where((t, index) => index % thinningFactor == 0)
+                    .ToList();
+            }
         }
     }
 
@@ -232,7 +252,19 @@
         <input type="datetime-local" @bind="startTime" class="form-control" />
         <label>Конец временного промежутка:</label>
         <input type="datetime-local" @bind="endTime" class="form-control" />
-        <button @onclick="ApplyTimeIntervalFilter" class="btn btn-primary mt-2">Применить фильтр</button>
+
+        @if (showThinningInput)
+        {
+            <div class="mb-3">
+                <label>Интервал прореживания:</label>
+                <input type="number" @bind="thinningInterval" min="1" class="form-control" />
+            </div>
+        }
+
+        <div class="mt-2">
+            <button @onclick="() => ApplyTimeIntervalFilter(false)" class="btn btn-primary me-2">Применить фильтр</button>
+            <button @onclick="() => ApplyTimeIntervalFilter(true)" class="btn btn-secondary">Прореживать данные</button>
+        </div>
     </div>
 }
 
@@ -241,6 +273,11 @@
 <button @onclick="() => showTimeIntervalInput = !showTimeIntervalInput" class="btn btn-primary mt-2">
     @(showTimeIntervalInput ? "Скрыть выбор времени" : "Показать выбор времени")
 </button>
+
+<button @onclick="() => showThinningInput = !showThinningInput" class="btn btn-primary mt-2">
+    @(showThinningInput ? "Скрыть интервал прореживания" : "Задать интервал прореживания")
+</button>
+
 
 <button @onclick="() => corr.CalculationCorrelation(filteredTMValues)" class="btn btn-primary mt-2">
     Показать корреляцию
