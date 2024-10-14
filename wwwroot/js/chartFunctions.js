@@ -1,6 +1,6 @@
 ﻿let currentChart = null;
 
-function generateChart(chartElement, chartData, tmData, chartTitle, yAxisLabel) {
+async function generateChart(chartElement, chartData, tmData, chartTitle, yAxisLabel) {
     if (!chartElement || !(chartElement instanceof HTMLCanvasElement)) {
         console.error('chartElement не является элементом canvas');
         return;
@@ -60,9 +60,6 @@ function generateChart(chartElement, chartData, tmData, chartTitle, yAxisLabel) 
         fill: false,
         tension: 0.1
     });
-
-    // Получение данных о корреляции и статусе из таблицы tm
-    const tmData = await getTmData(chartData.map(data => data.indexTM));
 
     // Создание нового графика
     const ctx = chartElement.getContext('2d');
@@ -128,14 +125,4 @@ function generateChart(chartElement, chartData, tmData, chartTitle, yAxisLabel) 
             }
         }
     });
-}
-// Функция для получения данных из таблицы tm
-async function getTmData(indexTMs) {
-    // Замените этот код на ваш API-запрос или запрос к базе данных
-    const response = await fetch(`/api/tm?indexTMs=${indexTMs.join(',')}`);
-    if (!response.ok) {
-        console.error('Ошибка при получении данных из таблицы tm');
-        return [];
-    }
-    return await response.json(); // Предполагается, что данные приходят в формате JSON
 }
