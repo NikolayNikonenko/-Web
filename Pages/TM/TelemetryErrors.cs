@@ -89,11 +89,14 @@ namespace перенос_бд_на_Web.Pages.TM
             DateTime? startTime = null,
             DateTime? endTime = null,
             bool useThinning = false,
-            int thinningStep = 1)
+            int thinningStep = 1,
+            CancellationToken cancellationToken = default)
 
         {
             // Показываем статусбар
             setStatusBarVisible(true);
+            // Проверка отмены
+            cancellationToken.ThrowIfCancellationRequested();
             // Проверяем, есть ли отфильтрованные данные
             if ((filteredTMValues == null || !filteredTMValues.Any()) && (startTime.HasValue && endTime.HasValue))
             {
@@ -134,6 +137,9 @@ namespace перенос_бд_на_Web.Pages.TM
 
             foreach (var uniqueOrderTM in uniqueOrdersTM)
             {
+                // Проверка отмены
+                cancellationToken.ThrowIfCancellationRequested();
+
                 // Получаем данные для текущего индекса телеметрии
                 var tmValuesForIndex = filteredTMValues
                     .Where(t => t.IndexTM == uniqueOrderTM)

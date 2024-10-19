@@ -47,8 +47,8 @@
     private bool showThinningInput = false; // Показывать ли поле для ввода интервала прореживания
     private int pruningInterval = 1; // Интервал прореживания по умолчанию
     private List<TMValues> chartSourceData = new List<TMValues>();
-    private int currentProgress =0;
-    private bool isStatusBarVisible = false;
+    //private int currentProgress =0;
+    //private bool isStatusBarVisible = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -414,61 +414,91 @@
 </button>
 
 
-<button @onclick="OnCalculateCorrelation" class="btn btn-primary mt-2">
-    Расчитать корреляцию
+<!-- Кнопка для запуска расчёта -->
+<button @onclick="OnCalculateCorrelation" class="btn btn-primary mt-2" disabled="@isCalculating">
+    Рассчитать корреляцию
+</button>
+
+<!-- Кнопка для остановки расчёта -->
+<button @onclick="OnStopCalculation" class="btn btn-danger mt-2" disabled="@(isCalculating == false)">
+    Остановить расчет
 </button>
 
 @if (isStatusBarVisible)
 {
     <!-- Прогресс-бар -->
     <div class="progress mt-4">
-        <div class="progress-bar" role="progressbar" style="width: @currentProgress%"
-             aria-valuenow="@currentProgress" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar" role="progressbar" style="width: @currentProgress%" aria-valuenow="@currentProgress" aria-valuemin="0" aria-valuemax="100">
             @currentProgress%
         </div>
     </div>
 }
 
 @code {
+    private bool isCalculating = false;
+    private bool isStatusBarVisible = false;
+    private int currentProgress = 0;
+    private CancellationTokenSource cancellationTokenSource;
 
     private async Task OnCalculateCorrelation()
     {
-        isStatusBarVisible = true; // Показываем статусбар перед началом расчета
-        StateHasChanged(); // Обновляем UI, чтобы статусбар отобразился
+        if (isCalculating) return; // Если расчёт уже запущен, новый не начинаем
+
+        // Инициализация состояния
+        isCalculating = true;
+        isStatusBarVisible = true; // Показываем статусбар
+        cancellationTokenSource = new CancellationTokenSource(); // Инициализация токена отмены
+
+        StateHasChanged(); // Обновляем UI
 
         try
         {
             await corr.CalculationCorrelation(
-                filteredTMValues,
-                UpdateProgress,
-                SetStatusBarVisible,
-                startDate,
-                endDate
+                filteredTMValues,       // передаем отфильтрованные значения
+                UpdateProgress,         // метод для обновления прогресса
+                SetStatusBarVisible,     // метод для управления видимостью статусбара
+                startDate,              // начальная дата
+                endDate,                // конечная дата
+                false,
+                1,
+                cancellationTokenSource.Token // передаем токен отмены
             );
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Расчет был остановлен.");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Ошибка при расчете корреляции: {ex.Message}");
-            // Обработка ошибок, возможно, показать сообщение пользователю
         }
         finally
         {
-            isStatusBarVisible = false; // Скрываем статусбар после завершения
-            StateHasChanged(); // Обновляем UI в конце
+            isCalculating = false;  // Завершаем расчёт
+            isStatusBarVisible = false;  // Скрываем статусбар
+            StateHasChanged(); // Обновляем UI
+        }
+    }
+
+    private void OnStopCalculation()
+    {
+        if (isCalculating && cancellationTokenSource != null)
+        {
+            cancellationTokenSource.Cancel(); // Отменяем текущую задачу
+            isCalculating = false; // Останавливаем процесс расчёта
         }
     }
 
     private void SetStatusBarVisible(bool isVisible)
     {
         isStatusBarVisible = isVisible; // Устанавливаем видимость статусбара
-        StateHasChanged(); // Обновляем UI при изменении видимости статусбара
+        StateHasChanged(); // Обновляем UI
     }
 
     private void UpdateProgress(int progress)
     {
-        currentProgress = progress; // Обновляем текущий прогресс
-        Console.WriteLine($"Прогресс: {currentProgress}%"); // Логируем прогресс
-        StateHasChanged(); // Обновляем UI при изменении прогресса
+        currentProgress = progress; // Обновляем прогресс
+        StateHasChanged(); // Обновляем UI
     }
 }
 
