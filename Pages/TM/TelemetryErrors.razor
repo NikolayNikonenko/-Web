@@ -40,18 +40,32 @@
     private List<TMValues> chartData = new List<TMValues>();
     private bool chartDataAvailable = false;
     private ElementReference chartElement;
-    private DateTime? startTime;
-    private DateTime? endTime;
+    private DateTime? startDate;
+    private DateTime? endDate;
     private bool showTimeIntervalInput = false;
     private List<NedostovernayaTM> tmData = new List<NedostovernayaTM>();
     private bool showThinningInput = false; // Показывать ли поле для ввода интервала прореживания
-    private int thinningInterval = 1; // Интервал прореживания по умолчанию
+    private int pruningInterval = 1; // Интервал прореживания по умолчанию
     private List<TMValues> chartSourceData = new List<TMValues>();
+    private int currentProgress =0;
+    private bool isStatusBarVisible = false;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
     }
+
+    // Метод для обновления прогресса
+    // private void UpdateProgress(int progress)
+    // {
+    //     currentProgress = progress;
+    //     StateHasChanged(); // Обновляем состояние компонента для рендеринга изменений
+    // }
+
+    // private void SetStatusBarVisible(bool isVisible)
+    // {
+    //     isStatusBarVisible = isVisible;
+    // }
 
     private async Task LoadData()
     {
@@ -147,17 +161,75 @@
         };
     }
 
+
     private async Task GenerateChart()
     {
         if (double.TryParse(tmIndexInput, out double tmIndex))
         {
-            // Получаем данные для графика
-            chartData = filteredTMValues
-                .Where(tv => tv.IndexTM == tmIndex)
-                .OrderBy(tv => tv.NumberOfSrez)
-                .ThenBy(tv => tv.OrderIndex)
-                .ToList();
+            // Шаг 1: Извлекаем данные по IndexTM
+            IQueryable<TMValues> query = _context.TMValues.Where(tv => tv.IndexTM == tmIndex);
 
+            // Извлекаем данные без фильтрации по дате
+            var tmValuesList = await query.ToListAsync();
+
+            Console.WriteLine($"Всего записей: {tmValuesList.Count}");
+
+            // Шаг 2: Фильтрация по временному интервалу
+            if (startDate.HasValue && endDate.HasValue)
+            {
+                chartData = tmValuesList
+                    .Where(tv =>
+                    {
+                        // Разделяем строку по символу "_", чтобы получить часы, минуты и секунды
+                        var timeParts = tv.NumberOfSrez.Split('_');
+                        if (timeParts.Length == 3 &&
+                            int.TryParse(timeParts[0], out int hours) &&
+                            int.TryParse(timeParts[1], out int minutes) &&
+                            int.TryParse(timeParts[2], out int seconds))
+                        {
+                            // Преобразуем в TimeSpan для сравнения
+                            var parsedTime = new TimeSpan(hours, minutes, seconds);
+                            var startTime = startDate.Value.TimeOfDay;
+                            var endTime = endDate.Value.TimeOfDay;
+
+                            Console.WriteLine($"Parsed TimeSpan: {parsedTime}, StartTime: {startTime}, EndTime: {endTime}");
+
+                            // Сравнение времени без учета даты
+                            return parsedTime >= startTime && parsedTime <= endTime;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Ошибка преобразования времени: {tv.NumberOfSrez}");
+                            return false;
+                        }
+                    })
+                    .ToList();
+            }
+            else
+            {
+                chartData = tmValuesList;
+            }
+
+            // Шаг 3: Применение прореживания (если задано)
+            if (pruningInterval > 0)
+            {
+                // Сортируем данные перед прореживанием, чтобы сохранить порядок срезов
+                chartData = chartData
+                    .OrderBy(tv => tv.NumberOfSrez)
+                    .ThenBy(tv => tv.OrderIndex)  // Убедимся, что данные сортируются по порядку
+                    .Where((tv, index) => index % pruningInterval == 0)  // Применяем прореживание
+                    .ToList();
+            }
+            else
+            {
+                // Просто сортируем данные, если интервал прореживания не задан
+                chartData = chartData
+                    .OrderBy(tv => tv.NumberOfSrez)
+                    .ThenBy(tv => tv.OrderIndex)
+                    .ToList();
+            }
+
+            // Проверяем наличие данных
             if (!chartData.Any())
             {
                 Console.WriteLine($"Нет данных для IndexTM: {tmIndex}");
@@ -165,14 +237,16 @@
                 return;
             }
 
-            // Извлечение дополнительных данных
+            // Шаг 4: Извлечение дополнительных данных (если необходимо)
             var DataInTm = await _context.tm
                 .Where(tm => tm.IndexTm == tmIndex)
                 .ToListAsync();
 
+            // Устанавливаем флаг доступности данных для графика
             chartDataAvailable = true;
             showChart = true;
 
+            // Формируем заголовок и метку оси Y для графика
             string chartTitle = $"Индекс ТМ: {chartData[0].IndexTM}, Наименование: {chartData[0].NameTM}";
             string yAxisLabel = GetYAxisLabel(chartData[0].Privyazka);
 
@@ -180,9 +254,16 @@
             await Task.Delay(100);
             StateHasChanged();
 
-            // Вызов функции JavaScript
+            // Шаг 5: Вызов JavaScript для генерации графика
             try
             {
+                Console.WriteLine($"Прореженные данные для графика: {chartData.Count}");
+                foreach (var item in chartData)
+                {
+                    Console.WriteLine($"IndexTM: {item.IndexTM}, Время среза: {item.NumberOfSrez}, Id1: {item.Id1}");
+                }
+
+
                 await JS.InvokeVoidAsync("generateChart", chartElement, chartData, DataInTm, chartTitle, yAxisLabel);
             }
             catch (Exception ex)
@@ -209,85 +290,92 @@
     }
     private async Task ApplyTimeIntervalFilter(bool isThinning = false)
     {
-        // Проверяем, выбраны ли временные рамки
-        if (startTime.HasValue && endTime.HasValue)
+        if (startDate.HasValue && endDate.HasValue)
         {
-            // Используем SliceService для получения отфильтрованных путей файлов
-            var filePaths = await sliceService.GetFilePathsInRangeAsync(startTime.Value, endTime.Value);
-
-            // Проверяем, есть ли найденные пути
-            if (!filePaths.Any())
-            {
-                Console.WriteLine("Нет найденных путей файлов для заданного временного интервала.");
-                return;
-            }
-
-            // Получаем идентификаторы срезов, соответствующие отфильтрованным путям
-            var sliceIdsInRange = await _context.slices
-                .Where(s => filePaths.Contains(s.SlicePath))
-                .Select(s => s.SliceID)
-                .ToListAsync();
-
-            // Проверяем, есть ли идентификаторы срезов
-            if (!sliceIdsInRange.Any())
-            {
-                Console.WriteLine("Нет идентификаторов срезов для заданных путей файлов.");
-                return;
-            }
-
-            // Фильтруем данные TMValues по идентификаторам срезов
-            filteredTMValues = await _context.TMValues
-                .Where(t => sliceIdsInRange.Contains(t.SliceID))
-                .ToListAsync();
-
-            // Проверяем, есть ли данные после фильтрации
-            if (!filteredTMValues.Any())
-            {
-                Console.WriteLine("filteredTMValues пуст после фильтрации.");
-                return;
-            }
-
-            // Обновляем chartSourceData
-            chartSourceData = filteredTMValues.ToList();
-            Console.WriteLine($"Найдено {filteredTMValues.Count} значений после фильтрации по времени.");
-
-            // Применяем прореживание данных, если это необходимо
-            if (isThinning)
-            {
-                filteredTMValues = filteredTMValues
-                    .Where((t, index) => index % thinningInterval == 0)
-                    .ToList();
-
-                // Обновляем chartSourceData после прореживания
-                chartSourceData = filteredTMValues.ToList();
-                Console.WriteLine($"Прореживание данных: осталось {filteredTMValues.Count} значений.");
-            }
+            await FilterByTimeInterval(isThinning);
         }
         else
         {
-            // Если временной промежуток не выбран, возвращаем все данные
-            filteredTMValues = await _context.TMValues.ToListAsync();
-            chartSourceData = filteredTMValues.ToList(); // Обновляем chartSourceData
-
-            // Проверяем, есть ли данные
-            if (!filteredTMValues.Any())
-            {
-                Console.WriteLine("Нет данных в TMValues.");
-                return;
-            }
-
-            // Применяем прореживание данных, если это необходимо
-            if (isThinning)
-            {
-                filteredTMValues = filteredTMValues
-                    .Where((t, index) => index % thinningInterval == 0)
-                    .ToList();
-
-                // Обновляем chartSourceData после прореживания
-                chartSourceData = filteredTMValues.ToList();
-                Console.WriteLine($"Прореживание данных: осталось {filteredTMValues.Count} значений.");
-            }
+            await RetrieveAllData(isThinning);
         }
+    }
+
+    private async Task FilterByTimeInterval(bool isThinning)
+    {
+        var filePaths = await sliceService.GetFilePathsInRangeAsync(startDate.Value, endDate.Value);
+
+        if (!filePaths.Any())
+        {
+            Console.WriteLine("Нет найденных путей файлов для заданного временного интервала.");
+            return;
+        }
+
+        var sliceIdsInRange = await _context.slices
+            .Where(s => filePaths.Contains(s.SlicePath))
+            .Select(s => s.SliceID)
+            .ToListAsync();
+
+        if (!sliceIdsInRange.Any())
+        {
+            Console.WriteLine("Нет идентификаторов срезов для заданных путей файлов.");
+            return;
+        }
+
+        filteredTMValues = await _context.TMValues
+            .Where(t => sliceIdsInRange.Contains(t.SliceID))
+            .ToListAsync();
+
+        if (!filteredTMValues.Any())
+        {
+            Console.WriteLine("filteredTMValues пуст после фильтрации.");
+            return;
+        }
+
+        UpdateChartSourceData(filteredTMValues);
+
+        if (isThinning)
+        {
+            ApplyThinning();
+        }
+    }
+
+    private async Task RetrieveAllData(bool isThinning)
+    {
+        filteredTMValues = await _context.TMValues.ToListAsync();
+        UpdateChartSourceData(filteredTMValues);
+
+        if (!filteredTMValues.Any())
+        {
+            Console.WriteLine("Нет данных в TMValues.");
+            return;
+        }
+
+        if (isThinning)
+        {
+            ApplyThinning();
+        }
+    }
+
+    private void UpdateChartSourceData(List<TMValues> data)
+    {
+        chartSourceData = data.ToList();
+        Console.WriteLine($"Найдено {data.Count} значений после фильтрации по времени.");
+    }
+
+    private void ApplyThinning()
+    {
+        if (pruningInterval <= 0)
+        {
+            Console.WriteLine("thinningInterval должен быть больше 0.");
+            return;
+        }
+
+        filteredTMValues = filteredTMValues
+            .Where((t, index) => index % pruningInterval == 0)
+            .ToList();
+
+        UpdateChartSourceData(filteredTMValues);
+        Console.WriteLine($"Прореживание данных: осталось {filteredTMValues.Count} значений.");
     }
 
 }
@@ -296,15 +384,15 @@
 {
     <div class="mb-3">
         <label>Начало временного промежутка:</label>
-        <input type="datetime-local" @bind="startTime" class="form-control" />
+        <input type="datetime-local" @bind="startDate" class="form-control" />
         <label>Конец временного промежутка:</label>
-        <input type="datetime-local" @bind="endTime" class="form-control" />
+        <input type="datetime-local" @bind="endDate" class="form-control" />
 
         @if (showThinningInput)
         {
             <div class="mb-3">
                 <label>Интервал прореживания:</label>
-                <input type="number" @bind="thinningInterval" min="1" class="form-control" />
+                <input type="number" @bind="pruningInterval" min="1" class="form-control" />
             </div>
         }
 
@@ -326,9 +414,63 @@
 </button>
 
 
-<button @onclick="() => corr.CalculationCorrelation(filteredTMValues)" class="btn btn-primary mt-2">
-    Показать корреляцию
+<button @onclick="OnCalculateCorrelation" class="btn btn-primary mt-2">
+    Расчитать корреляцию
 </button>
+
+@if (isStatusBarVisible)
+{
+    <!-- Прогресс-бар -->
+    <div class="progress mt-4">
+        <div class="progress-bar" role="progressbar" style="width: @currentProgress%"
+             aria-valuenow="@currentProgress" aria-valuemin="0" aria-valuemax="100">
+            @currentProgress%
+        </div>
+    </div>
+}
+
+@code {
+
+    private async Task OnCalculateCorrelation()
+    {
+        isStatusBarVisible = true; // Показываем статусбар перед началом расчета
+        StateHasChanged(); // Обновляем UI, чтобы статусбар отобразился
+
+        try
+        {
+            await corr.CalculationCorrelation(
+                filteredTMValues,
+                UpdateProgress,
+                SetStatusBarVisible,
+                startDate,
+                endDate
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка при расчете корреляции: {ex.Message}");
+            // Обработка ошибок, возможно, показать сообщение пользователю
+        }
+        finally
+        {
+            isStatusBarVisible = false; // Скрываем статусбар после завершения
+            StateHasChanged(); // Обновляем UI в конце
+        }
+    }
+
+    private void SetStatusBarVisible(bool isVisible)
+    {
+        isStatusBarVisible = isVisible; // Устанавливаем видимость статусбара
+        StateHasChanged(); // Обновляем UI при изменении видимости статусбара
+    }
+
+    private void UpdateProgress(int progress)
+    {
+        currentProgress = progress; // Обновляем текущий прогресс
+        Console.WriteLine($"Прогресс: {currentProgress}%"); // Логируем прогресс
+        StateHasChanged(); // Обновляем UI при изменении прогресса
+    }
+}
 
 
 

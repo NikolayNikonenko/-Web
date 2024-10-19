@@ -6,25 +6,61 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using перенос_бд_на_Web.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace перенос_бд_на_Web.Pages.TM
 {
     public class SomeDataTM : PageModel
     {
         private readonly ApplicationContext _telemetry_Context;
+        private readonly CorrData _correlation; // Включаем CorrData для расчета корреляции
 
         public List<NedostovernayaTM> Tm { get; set; }
+        public bool IsCalculating { get; set; } // Поле для отслеживания статуса загрузки
+        private bool isStatusBarVisible; // Объявляем переменную для статусбара
 
         // Если у вас используется Dependency Injection, то конструктор может быть следующим:
         public SomeDataTM(ApplicationContext db)
         {
             _telemetry_Context = db;
+            _correlation = new CorrData(db); // Инициализация CorrData
         }
 
         public void OnGet()
         {
             Tm = _telemetry_Context.tm.AsNoTracking().ToList();
+            IsCalculating = false; // Изначально расчет не выполняется
         }
+
+        // Метод для запуска расчета
+        public async Task<IActionResult> OnPostCalculateCorrelation()
+        {
+            IsCalculating = true; // Устанавливаем статус выполнения
+
+            // Объявляем переменные для фильтрации (по необходимости можно изменить)
+            DateTime? startTime = null; // Установите значения при необходимости
+            DateTime? endTime = null;
+
+            // Запускаем расчет корреляции и передаем прогресс в виде колбэка
+            await _correlation.CalculationCorrelation(
+                null, // Здесь можно передать отфильтрованные значения, если нужно
+                progress => {
+                    // Обновление прогресса в UI можно реализовать через SignalR или другие механизмы
+                    Console.WriteLine($"Прогресс: {progress}%"); // Логируем прогресс
+                },
+                SetStatusBarVisible, // Метод для управления видимостью статусбара
+                startTime,
+                endTime);
+
+            IsCalculating = false; // Устанавливаем статус завершения
+
+            return Page(); // Обновляем страницу после завершения расчета
+        }
+        private void SetStatusBarVisible(bool isVisible)
+        {
+            isStatusBarVisible = isVisible; // Устанавливаем видимость статусбара
+        }
+
     }
 
     public class CorrData
@@ -48,11 +84,16 @@ namespace перенос_бд_на_Web.Pages.TM
 
         public async Task CalculationCorrelation(
             List<TMValues> filteredTMValues,
+            Action<int> progressCallback,
+            Action<bool> setStatusBarVisible, 
             DateTime? startTime = null,
             DateTime? endTime = null,
             bool useThinning = false,
             int thinningStep = 1)
+
         {
+            // Показываем статусбар
+            setStatusBarVisible(true);
             // Проверяем, есть ли отфильтрованные данные
             if ((filteredTMValues == null || !filteredTMValues.Any()) && (startTime.HasValue && endTime.HasValue))
             {
@@ -88,6 +129,8 @@ namespace перенос_бд_на_Web.Pages.TM
                 .ToList();
 
             var answer = new Dictionary<int, double>();
+            int totalIterations = uniqueOrdersTM.Count;
+            int processedCount = 0;
 
             foreach (var uniqueOrderTM in uniqueOrdersTM)
             {
@@ -194,7 +237,11 @@ namespace перенос_бд_на_Web.Pages.TM
                 {
                     Console.WriteLine($"Ошибка при сохранении данных: {ex.Message}");
                 }
+                processedCount++;
+                int progress = (int)((double)processedCount / totalIterations * 100);
+                progressCallback(progress);
             }
+            setStatusBarVisible(false);
             Console.WriteLine("Расчет корреляции завершен.");
         }
 
