@@ -47,25 +47,15 @@
     private bool showThinningInput = false; // Показывать ли поле для ввода интервала прореживания
     private int pruningInterval = 1; // Интервал прореживания по умолчанию
     private List<TMValues> chartSourceData = new List<TMValues>();
-    //private int currentProgress =0;
-    //private bool isStatusBarVisible = false;
+    public bool IsDropdownVisible { get; set; }  // Новое свойство
+
+
 
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
     }
 
-    // Метод для обновления прогресса
-    // private void UpdateProgress(int progress)
-    // {
-    //     currentProgress = progress;
-    //     StateHasChanged(); // Обновляем состояние компонента для рендеринга изменений
-    // }
-
-    // private void SetStatusBarVisible(bool isVisible)
-    // {
-    //     isStatusBarVisible = isVisible;
-    // }
 
     private async Task LoadData()
     {
@@ -563,6 +553,9 @@ else
                 <th @onclick="() => SortData(nameof(NedostovernayaTM.AvgLagranj))">
                     Среднее значение лагранжиана @(currentSortColumn == nameof(NedostovernayaTM.AvgLagranj) ? (isAscending ? "▲" : "▼") : "")
                 </th>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.recomendedActions))">
+                    Действия по достоверизации @(currentSortColumn == nameof(NedostovernayaTM.recomendedActions) ? (isAscending ? "▲" : "▼") : "")
+                </th>
             </tr>
         </thead>
         <tbody>
@@ -575,9 +568,73 @@ else
                     <td>@telemetry.Status</td>
                     <td>@telemetry.MaxLagranj</td>
                     <td>@telemetry.AvgLagranj</td>
+                    <td>@telemetry.recomendedActions</td>
                 </tr>
             }
         </tbody>
     </table>
+
+
+
+
+
+    @if (nedostovernayaTMList != null && nedostovernayaTMList.Any())
+    {
+        @foreach (var item in nedostovernayaTMList)
+        {
+            <div>
+                <span>@item.recomendedActions</span>
+
+                <!-- Кнопка для выбора действия -->
+                <button @onclick="() => ShowActionsDropdown(item)">Достоверизация</button>
+
+                <!-- Выпадающий список -->
+                @if (item == selectedItem)
+                {
+                    <select @onchange="(e) => HandleActionChange(item, e.Value.ToString())">
+                        <option value="Достоверизация по измерениям">Достоверизация по измерениям</option>
+                        <option value="Перерасчет данных">Перерасчет данных</option>
+                        <option value="Оценка с помощью прогноза">Оценка с помощью прогноза</option>
+                    </select>
+                }
+            </div>
+        }
+    }
+    else
+    {
+        <p>Нет данных для отображения.</p>
+    }
+
+    @code {
+    private List<NedostovernayaTM> nedostovernayaTMList = new List<NedostovernayaTM>(); // Инициализируем пустым списком
+    private NedostovernayaTM selectedItem;
+
+    // Метод для отображения выпадающего списка действий
+    private void ShowActionsDropdown(NedostovernayaTM item)
+    {
+        selectedItem = item;
+    }
+
+    // Метод для обработки изменения выбранного действия
+    private void HandleActionChange(NedostovernayaTM item, string selectedAction)
+    {
+        item.recomendedActions = selectedAction;
+        // Логика для обработки выбранного действия
+    }
+
+    // Метод для расчета корреляции
+    private async Task CalculateCorrelation()
+    {
+        // Здесь ваш код для расчета корреляции и сохранения данных в БД
+
+        // Получение обновленных данных из базы
+        nedostovernayaTMList = await _context.tm.ToListAsync();
+    }
 }
+}
+
+
+
+
+
 
