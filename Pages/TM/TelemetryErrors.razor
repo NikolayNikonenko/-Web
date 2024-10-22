@@ -48,6 +48,8 @@
     private int pruningInterval = 1; // Интервал прореживания по умолчанию
     private List<TMValues> chartSourceData = new List<TMValues>();
     public bool IsDropdownVisible { get; set; }  // Новое свойство
+    private NedostovernayaTM selectedTelemetry; // Хранит выбранный элемент для отображения действий
+    private string selectedAction; // Хранит выбранное действие
 
 
 
@@ -490,6 +492,49 @@
         currentProgress = progress; // Обновляем прогресс
         StateHasChanged(); // Обновляем UI
     }
+
+    // Метод для обработки нажатия кнопки действия
+    private void PerformAction(NedostovernayaTM telemetry)
+    {
+        selectedTelemetry = telemetry; // Устанавливаем выбранный элемент
+        selectedAction = null; // Сбрасываем выбранное действие
+    }
+
+    // Метод для выполнения действия
+    private void ExecuteAction(NedostovernayaTM telemetry)
+    {
+        switch (selectedAction)
+        {
+            case "Изменить знак ТМ":
+                ChangeSign(telemetry);
+                break;
+            case "Создать дорасчет":
+                CreateRecalculation(telemetry);
+                break;
+            case "Исключить из ОС":
+                ExcludeFromOS(telemetry);
+                break;
+            default:
+                // Обработка случая, если не выбрано никакое действие
+                break;
+        }
+    }
+
+    // Пример реализации методов для каждого действия
+    private void ChangeSign(NedostovernayaTM telemetry)
+    {
+        // Логика изменения знака ТМ
+    }
+
+    private void CreateRecalculation(NedostovernayaTM telemetry)
+    {
+        // Логика создания дорасчета
+    }
+
+    private void ExcludeFromOS(NedostovernayaTM telemetry)
+    {
+        // Логика исключения из ОС
+    }
 }
 
 
@@ -568,69 +613,18 @@ else
                     <td>@telemetry.Status</td>
                     <td>@telemetry.MaxLagranj</td>
                     <td>@telemetry.AvgLagranj</td>
-                    <td>@telemetry.recomendedActions</td>
+                    <td>
+                        <select class="form-select" @onchange="@((e) => { selectedAction = e.Value.ToString(); ExecuteAction(telemetry); })">
+                            <option value="">Выберите действие</option>
+                            <option value="Изменить знак ТМ">Изменить знак ТМ</option>
+                            <option value="Создать дорасчет">Создать дорасчет</option>
+                            <option value="Исключить из ОС">Исключить из ОС</option>
+                        </select>
+                    </td>
                 </tr>
             }
         </tbody>
     </table>
-
-
-
-
-
-    @if (nedostovernayaTMList != null && nedostovernayaTMList.Any())
-    {
-        @foreach (var item in nedostovernayaTMList)
-        {
-            <div>
-                <span>@item.recomendedActions</span>
-
-                <!-- Кнопка для выбора действия -->
-                <button @onclick="() => ShowActionsDropdown(item)">Достоверизация</button>
-
-                <!-- Выпадающий список -->
-                @if (item == selectedItem)
-                {
-                    <select @onchange="(e) => HandleActionChange(item, e.Value.ToString())">
-                        <option value="Достоверизация по измерениям">Достоверизация по измерениям</option>
-                        <option value="Перерасчет данных">Перерасчет данных</option>
-                        <option value="Оценка с помощью прогноза">Оценка с помощью прогноза</option>
-                    </select>
-                }
-            </div>
-        }
-    }
-    else
-    {
-        <p>Нет данных для отображения.</p>
-    }
-
-    @code {
-    private List<NedostovernayaTM> nedostovernayaTMList = new List<NedostovernayaTM>(); // Инициализируем пустым списком
-    private NedostovernayaTM selectedItem;
-
-    // Метод для отображения выпадающего списка действий
-    private void ShowActionsDropdown(NedostovernayaTM item)
-    {
-        selectedItem = item;
-    }
-
-    // Метод для обработки изменения выбранного действия
-    private void HandleActionChange(NedostovernayaTM item, string selectedAction)
-    {
-        item.recomendedActions = selectedAction;
-        // Логика для обработки выбранного действия
-    }
-
-    // Метод для расчета корреляции
-    private async Task CalculateCorrelation()
-    {
-        // Здесь ваш код для расчета корреляции и сохранения данных в БД
-
-        // Получение обновленных данных из базы
-        nedostovernayaTMList = await _context.tm.ToListAsync();
-    }
-}
 }
 
 
