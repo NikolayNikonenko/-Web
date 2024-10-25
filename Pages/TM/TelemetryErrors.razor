@@ -50,6 +50,7 @@
     public bool IsDropdownVisible { get; set; }  // Новое свойство
     private NedostovernayaTM selectedTelemetry; // Хранит выбранный элемент для отображения действий
     private string selectedAction; // Хранит выбранное действие
+    private int thinningInterval;
 
 
 
@@ -427,10 +428,37 @@
 }
 
 @code {
+    public async Task<List<TMValues>> GetFilteredTMValuesAsync(DateTime? startDate, DateTime? endDate, int thinningInterval)
+    {
+        // Проверяем, что даты не null
+        if (!startDate.HasValue || !endDate.HasValue)
+        {
+            throw new ArgumentNullException("Start date and end date must be provided.");
+        }
+
+        // Преобразуем даты в UTC
+        DateTime startDateUtc = DateTime.SpecifyKind(startDate.Value, DateTimeKind.Utc);
+        DateTime endDateUtc = DateTime.SpecifyKind(endDate.Value, DateTimeKind.Utc);
+
+        // Вызов функции с явными приведениями типов
+        var filteredTMValues = await _context.TMValues
+            .FromSqlRaw("SELECT * FROM get_filtered_tmvalues({0}::timestamp, {1}::timestamp, {2})", startDateUtc, endDateUtc, thinningInterval)
+            .ToListAsync();
+
+        return filteredTMValues;
+    }
+
+
+
+
     private bool isCalculating = false;
     private bool isStatusBarVisible = false;
     private int currentProgress = 0;
     private CancellationTokenSource cancellationTokenSource;
+
+
+
+
 
     private async Task OnCalculateCorrelation()
     {
@@ -445,15 +473,27 @@
 
         try
         {
+            // Получаем отфильтрованные данные из базы данных
+            var filteredTMValues = await GetFilteredTMValuesAsync(startDate, endDate, thinningInterval);
+
+            if (filteredTMValues == null || filteredTMValues.Count == 0)
+            {
+                Console.WriteLine("Нет данных для расчета корреляции.");
+                return; // Завершаем метод, если нет данных
+            }
+
+            Console.WriteLine($"Данные загружены: {filteredTMValues.Count} записей.");
+
+            // Вызываем метод расчета корреляции
             await corr.CalculationCorrelation(
-                filteredTMValues,       // передаем отфильтрованные значения
-                UpdateProgress,         // метод для обновления прогресса
-                SetStatusBarVisible,     // метод для управления видимостью статусбара
-                startDate,              // начальная дата
-                endDate,                // конечная дата
+                filteredTMValues,      // Передаем отфильтрованные значения
+                UpdateProgress,        // Метод для обновления прогресса
+                SetStatusBarVisible,    // Метод для управления видимостью статусбара
+                startDate,              // Начальная дата
+                endDate,                // Конечная дата
                 false,
                 1,
-                cancellationTokenSource.Token // передаем токен отмены
+                cancellationTokenSource.Token // Передаем токен отмены
             );
         }
         catch (OperationCanceledException)
