@@ -490,9 +490,8 @@
     private void UpdateProgress(int progress)
     {
         currentProgress = progress; // Обновляем прогресс
-        StateHasChanged(); // Обновляем UI
+        InvokeAsync(StateHasChanged); // Обновляем UI через диспетчер потока
     }
-
     // Метод для обработки нажатия кнопки действия
     private void PerformAction(NedostovernayaTM telemetry)
     {
