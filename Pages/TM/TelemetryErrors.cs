@@ -48,8 +48,14 @@ public class CorrData
             return;
         }
 
-        var uniqueOrdersTM = filteredTMValues.Select(s => s.IndexTM).Distinct().OrderBy(indexTM => indexTM).ToList();
-        int totalIterations = uniqueOrdersTM.Count;
+        var uniquePairsTM = filteredTMValues
+         .Select(s => new { s.IndexTM, s.NameTM, s.Id1 })
+         .Distinct()
+         .OrderBy(x => x.IndexTM)
+         .ThenBy(x => x.NameTM)
+         .ThenBy(x => x.Id1)
+         .ToList();
+        int totalIterations = uniquePairsTM.Count;
         int processedCount = 0;
         var newRecords = new List<NedostovernayaTM>();
 
@@ -61,12 +67,13 @@ public class CorrData
 
         await Task.Run(() =>
         {
-            Parallel.ForEach(uniqueOrdersTM, parallelOptions, (uniqueOrderTM) =>
+            Parallel.ForEach(uniquePairsTM, parallelOptions, (uniqueOrderTM) =>
             {
                 var tmValuesForIndex = filteredTMValues
-                    .Where(t => t.IndexTM == uniqueOrderTM)
+                    .Where(t => t.IndexTM == uniqueOrderTM.IndexTM && t.NameTM == uniqueOrderTM.NameTM)
                     .OrderBy(e => e.NumberOfSrez)
                     .ToList();
+
 
                 var allIzmerTM = tmValuesForIndex.Select(s => s.IzmerValue).ToList();
                 var allOcenTM = tmValuesForIndex.Select(s => s.OcenValue).ToList();
@@ -113,7 +120,7 @@ public class CorrData
 
                 newRecords.Add(new NedostovernayaTM
                 {
-                    IndexTm = uniqueOrderTM,
+                    IndexTm = uniqueOrderTM.IndexTM,
                     CorrTm = correlation,
                     Status = status,
                     NameTM = nameTM,
