@@ -17,16 +17,16 @@ public class CorrData
     }
 
     public async Task CalculationCorrelation(
-        List<TMValues> filteredTMValues,
-        Action<int> progressCallback,
-        Action<bool> setStatusBarVisible,
-        DateTime? startTime = null,
-        DateTime? endTime = null,
-        bool useThinning = false,
-        int thinningStep = 1,
-        CancellationToken cancellationToken = default)
+     List<TMValues> filteredTMValues,
+     Action<int> progressCallback,
+     Action<bool> setStatusBarVisible,
+     DateTime? startTime = null,
+     DateTime? endTime = null,
+     bool useThinning = false,
+     int thinningStep = 1,
+     CancellationToken cancellationToken = default)
     {
-        setStatusBarVisible(true);
+        setStatusBarVisible(true); // Отображаем статусбар один раз в начале
         cancellationToken.ThrowIfCancellationRequested();
 
         if ((filteredTMValues == null || !filteredTMValues.Any()) && (startTime.HasValue && endTime.HasValue))
@@ -44,100 +44,88 @@ public class CorrData
 
         if (!filteredTMValues.Any())
         {
-            setStatusBarVisible(false);
+            setStatusBarVisible(false); // Скрываем статусбар, если нет данных
             return;
         }
 
         var uniquePairsTM = filteredTMValues
-         .Select(s => new { s.IndexTM, s.NameTM, s.Id1 })
-         .Distinct()
-         .OrderBy(x => x.IndexTM)
-         .ThenBy(x => x.NameTM)
-         .ThenBy(x => x.Id1)
-         .ToList();
+            .Select(s => new { s.IndexTM, s.NameTM, s.Id1 })
+            .Distinct()
+            .OrderBy(x => x.IndexTM)
+            .ThenBy(x => x.NameTM)
+            .ThenBy(x => x.Id1)
+            .ToList();
+
         int totalIterations = uniquePairsTM.Count;
         int processedCount = 0;
         var newRecords = new List<NedostovernayaTM>();
 
-        var parallelOptions = new ParallelOptions
+        foreach (var uniquePairTM in uniquePairsTM)
         {
-            MaxDegreeOfParallelism = Math.Max(Environment.ProcessorCount / 2, 1), // Ограничение по потокам
-            CancellationToken = cancellationToken
-        };
+            var tmValuesForPair = filteredTMValues
+                .Where(t => t.IndexTM == uniquePairTM.IndexTM && t.NameTM == uniquePairTM.NameTM)
+                .OrderBy(e => e.NumberOfSrez)
+                .ToList();
 
-        await Task.Run(() =>
-        {
-            Parallel.ForEach(uniquePairsTM, parallelOptions, (uniqueOrderTM) =>
+            var allIzmerTM = tmValuesForPair.Select(s => s.IzmerValue).ToList();
+            var allOcenTM = tmValuesForPair.Select(s => s.OcenValue).ToList();
+            var lagranjValues = tmValuesForPair.Select(s => s.Lagranj).ToList();
+
+            if (useThinning)
             {
-                var tmValuesForIndex = filteredTMValues
-                    .Where(t => t.IndexTM == uniqueOrderTM.IndexTM && t.NameTM == uniqueOrderTM.NameTM)
-                    .OrderBy(e => e.NumberOfSrez)
-                    .ToList();
+                allIzmerTM = allIzmerTM.Where((value, index) => index % thinningStep == 0).ToList();
+                allOcenTM = allOcenTM.Where((value, index) => index % thinningStep == 0).ToList();
+                lagranjValues = lagranjValues.Where((value, index) => index % thinningStep == 0).ToList();
+            }
 
+            if (!allIzmerTM.Any() || !allOcenTM.Any()) continue;
 
-                var allIzmerTM = tmValuesForIndex.Select(s => s.IzmerValue).ToList();
-                var allOcenTM = tmValuesForIndex.Select(s => s.OcenValue).ToList();
-                var lagranjValues = tmValuesForIndex.Select(s => s.Lagranj).ToList();
+            double avgMeasured = allIzmerTM.Average();
+            double avgEstimated = allOcenTM.Average();
 
-                if (useThinning)
-                {
-                    allIzmerTM = allIzmerTM.Where((value, index) => index % thinningStep == 0).ToList();
-                    allOcenTM = allOcenTM.Where((value, index) => index % thinningStep == 0).ToList();
-                    lagranjValues = lagranjValues.Where((value, index) => index % thinningStep == 0).ToList();
-                }
+            double covariance = 0;
+            double varianceMeasured = 0;
+            double varianceEstimated = 0;
 
-                if (!allIzmerTM.Any() || !allOcenTM.Any()) return;
+            for (int i = 0; i < allIzmerTM.Count; i++)
+            {
+                double measuredDiff = allIzmerTM[i] - avgMeasured;
+                double estimatedDiff = allOcenTM[i] - avgEstimated;
+                covariance += measuredDiff * estimatedDiff;
+                varianceMeasured += measuredDiff * measuredDiff;
+                varianceEstimated += estimatedDiff * estimatedDiff;
+            }
 
-                double avgMeasured = allIzmerTM.Average();
-                double avgEstimated = allOcenTM.Average();
+            double denominator = Math.Sqrt(varianceMeasured * varianceEstimated);
+            double correlation = denominator != 0 ? covariance / denominator : 0;
 
-                double covariance = 0;
-                double varianceMeasured = 0;
-                double varianceEstimated = 0;
+            string status = DetermineStatus(correlation);
 
-                for (int i = 0; i < allIzmerTM.Count; i++)
-                {
-                    double measuredDiff = allIzmerTM[i] - avgMeasured;
-                    double estimatedDiff = allOcenTM[i] - avgEstimated;
-                    covariance += measuredDiff * estimatedDiff;
-                    varianceMeasured += measuredDiff * measuredDiff;
-                    varianceEstimated += estimatedDiff * estimatedDiff;
-                }
+            double maxPositiveLagrange = lagranjValues.Where(x => x > 0).DefaultIfEmpty(0).Max();
+            double maxNegativeLagrange = lagranjValues.Where(x => x < 0).DefaultIfEmpty(0).Min();
+            double avgLagrange = lagranjValues.Any() ? lagranjValues.Average() : 0;
+            double maxAbsoluteLagrange = Math.Abs(maxPositiveLagrange) > Math.Abs(maxNegativeLagrange)
+                ? maxPositiveLagrange
+                : maxNegativeLagrange;
 
-                double denominator = Math.Sqrt(varianceMeasured * varianceEstimated);
-                double correlation = denominator != 0 ? covariance / denominator : 0;
-
-                string status = DetermineStatus(correlation);
-
-                double maxPositiveLagrange = lagranjValues.Where(x => x > 0).DefaultIfEmpty(0).Max();
-                double maxNegativeLagrange = lagranjValues.Where(x => x < 0).DefaultIfEmpty(0).Min();
-                double avgLagrange = lagranjValues.Any() ? lagranjValues.Average() : 0;
-                double maxAbsoluteLagrange = Math.Abs(maxPositiveLagrange) > Math.Abs(maxNegativeLagrange)
-                    ? maxPositiveLagrange
-                    : maxNegativeLagrange;
-
-                var nameTM = tmValuesForIndex.Select(t => t.NameTM).FirstOrDefault();
-
-                newRecords.Add(new NedostovernayaTM
-                {
-                    IndexTm = uniqueOrderTM.IndexTM,
-                    CorrTm = correlation,
-                    Status = status,
-                    NameTM = nameTM,
-                    MaxLagranj = maxAbsoluteLagrange,
-                    AvgLagranj = avgLagrange
-                });
-
-                Interlocked.Increment(ref processedCount);
-                int progress = (int)((double)processedCount / totalIterations * 100);
-
-                // Периодически обновляем UI
-                if (processedCount % 10 == 0)
-                {
-                    Task.Run(() => progressCallback(progress));
-                }
+            newRecords.Add(new NedostovernayaTM
+            {
+                IndexTm = uniquePairTM.IndexTM,
+                NameTM = uniquePairTM.NameTM,
+                CorrTm = correlation,
+                Status = status,
+                MaxLagranj = maxAbsoluteLagrange,
+                AvgLagranj = avgLagrange
             });
-        });
+
+            processedCount++;
+            int progress = (int)((double)processedCount / totalIterations * 100);
+
+            if (processedCount % 5 == 0 || processedCount == totalIterations) // Увеличена частота обновления
+            {
+                await Task.Run(() => progressCallback(progress));
+            }
+        }
 
         try
         {
@@ -149,7 +137,7 @@ public class CorrData
             Console.WriteLine($"Ошибка при сохранении данных: {ex.Message}");
         }
 
-        setStatusBarVisible(false);
+        setStatusBarVisible(false); // Скрываем статусбар после завершения
     }
 
     string DetermineStatus(double correlation)

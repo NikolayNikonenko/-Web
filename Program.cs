@@ -33,11 +33,16 @@ namespace перенос_бд_на_Web
             options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 
-
             builder.Services.AddScoped<SlicesService>();
 
-
             builder.Services.AddScoped<SliceService>();
+
+            builder.Services.AddScoped<ISliceService, SliceService>();
+
+
+
+
+            builder.Services.AddScoped<ActionService>();
 
             builder.Services.AddScoped<CorrData>();
 

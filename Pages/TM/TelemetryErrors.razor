@@ -6,6 +6,7 @@
 @using перенос_бд_на_Web.Services
 @using Microsoft.EntityFrameworkCore
 @inject SliceService sliceService
+@inject ActionService ActionService
 @inject ApplicationContext _context
 @inject CorrData corr
 @inject IJSRuntime JS
@@ -50,6 +51,9 @@
     public bool IsDropdownVisible { get; set; }  // Новое свойство
     private NedostovernayaTM selectedTelemetry; // Хранит выбранный элемент для отображения действий
     private string selectedAction; // Хранит выбранное действие
+    private bool showChangeList = false;
+    private List<VerificationAction> selectedActions = new();
+    private bool showModal = false;
 
 
 
@@ -370,6 +374,69 @@
         Console.WriteLine($"Прореживание данных: осталось {filteredTMValues.Count} значений.");
     }
 
+
+
+    private void ToggleSelectedActions()
+    {
+        showModal = !showModal;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+    }
+
+    private async Task ConfirmActions()
+    {
+        List<VerificationAction> actionsToExecute = selectedActions
+            .Select(action => new VerificationAction
+                {
+                    ActionName = action.ActionName,
+                    TelemetryId = action.TelemetryId,
+                    StartDate = action.StartDate,
+                    EndDate = action.EndDate
+                })
+            .ToList();
+
+        // Выполнение действий через ActionService
+        await ActionService.ExecuteAction(actionsToExecute);
+
+        // Очищаем выбранные действия и закрываем модальное окно
+        selectedActions.Clear();
+        showModal = false;
+        Console.WriteLine("Выбранные действия успешно выполнены.");
+    }
+
+
+
+    private void SelectAction(NedostovernayaTM telemetry, string action)
+    {
+        if (!string.IsNullOrEmpty(action) && startDate.HasValue && endDate.HasValue)
+        {
+            var existingAction = selectedActions.FirstOrDefault(a => a.TelemetryId == (int)telemetry.IndexTm);
+            if (existingAction != default)
+            {
+                // Обновляем действие, если запись уже существует
+                selectedActions.Remove(existingAction);
+            }
+
+            // Добавляем выбранное действие
+            selectedActions.Add(new VerificationAction
+                {
+                    TelemetryId = (int)telemetry.IndexTm,
+                    ActionName = action,
+                    StartDate = startDate.Value,
+                    EndDate = endDate.Value
+                });
+        }
+        else if (string.IsNullOrEmpty(action))
+        {
+            // Удаляем действие, если пользователь выбрал пустое значение
+            selectedActions.RemoveAll(a => a.TelemetryId == (int)telemetry.IndexTm);
+        }
+    }
+
+
 }
 
 @if (showTimeIntervalInput)
@@ -441,7 +508,7 @@
         isStatusBarVisible = true; // Показываем статусбар
         cancellationTokenSource = new CancellationTokenSource(); // Инициализация токена отмены
 
-        StateHasChanged(); // Обновляем UI
+        await InvokeAsync(StateHasChanged); // Обновляем UI в начале
 
         try
         {
@@ -466,9 +533,9 @@
         }
         finally
         {
-            isCalculating = false;  // Завершаем расчёт
-            isStatusBarVisible = false;  // Скрываем статусбар
-            StateHasChanged(); // Обновляем UI
+            isCalculating = false;
+            isStatusBarVisible = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -477,14 +544,14 @@
         if (isCalculating && cancellationTokenSource != null)
         {
             cancellationTokenSource.Cancel(); // Отменяем текущую задачу
-            isCalculating = false; // Останавливаем процесс расчёта
+            isCalculating = false;
         }
     }
 
     private void SetStatusBarVisible(bool isVisible)
     {
-        isStatusBarVisible = isVisible; // Устанавливаем видимость статусбара
-        StateHasChanged(); // Обновляем UI
+        isStatusBarVisible = isVisible;
+        InvokeAsync(StateHasChanged);
     }
 
     private void UpdateProgress(int progress)
@@ -493,47 +560,21 @@
         InvokeAsync(StateHasChanged); // Обновляем UI через диспетчер потока
     }
     // Метод для обработки нажатия кнопки действия
-    private void PerformAction(NedostovernayaTM telemetry)
-    {
-        selectedTelemetry = telemetry; // Устанавливаем выбранный элемент
-        selectedAction = null; // Сбрасываем выбранное действие
-    }
+
 
     // Метод для выполнения действия
-    private void ExecuteAction(NedostovernayaTM telemetry)
-    {
-        switch (selectedAction)
-        {
-            case "Изменить знак ТМ":
-                ChangeSign(telemetry);
-                break;
-            case "Создать дорасчет":
-                CreateRecalculation(telemetry);
-                break;
-            case "Исключить из ОС":
-                ExcludeFromOS(telemetry);
-                break;
-            default:
-                // Обработка случая, если не выбрано никакое действие
-                break;
-        }
-    }
-
-    // Пример реализации методов для каждого действия
-    private void ChangeSign(NedostovernayaTM telemetry)
-    {
-        // Логика изменения знака ТМ
-    }
-
-    private void CreateRecalculation(NedostovernayaTM telemetry)
-    {
-        // Логика создания дорасчета
-    }
-
-    private void ExcludeFromOS(NedostovernayaTM telemetry)
-    {
-        // Логика исключения из ОС
-    }
+   // private async Task ExecuteSelectedAction(NedostovernayaTM telemetry)
+   // {
+   //     if(!string.IsNullOrEmpty(selectedAction) && startDate.HasValue && endDate.HasValue)
+   // {
+   //         await ActionService.ExecuteAction(selectedAction, telemetry, startDate.Value, endDate.Value);
+   //     }
+   // else
+   //     {
+   //         Console.WriteLine("Не выбрано действие или интервал времени не задан.");
+   //     }
+   // }
+   //
 }
 
 
@@ -564,6 +605,54 @@
         <canvas id="chart" width="400" height="200" @ref="chartElement"></canvas>
     </div>
 }
+
+<!-- Кнопка для показа выбранных действий -->
+@if (selectedActions.Any())
+{
+    <button class="btn btn-primary" @onclick="ToggleSelectedActions">Показать выбранные действия</button>
+}
+
+@if (showModal)
+{
+    <div class="modal fade show" style="display:block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Выбранные действия</h5>
+                    <h6>Выбранный интервал: от @startDate.Value.ToString("g") до @endDate.Value.ToString("g")</h6>
+                    <button type="button" class="close" @onclick="CloseModal" aria-label="Закрыть">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Индекс ТМ</th>
+                                <th>Действие</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var action in selectedActions)
+                            {
+                                <tr>
+                                    <td>@action.TelemetryId</td>
+                                    <td>@action.ActionName</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Закрыть</button>
+                    <button type="button" class="btn btn-primary" @onclick="ConfirmActions">Применить изменения</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
 
 @if (filteredTm == null || !filteredTm.Any())
 {
@@ -613,7 +702,7 @@ else
                     <td>@telemetry.MaxLagranj</td>
                     <td>@telemetry.AvgLagranj</td>
                     <td>
-                        <select class="form-select" @onchange="@((e) => { selectedAction = e.Value.ToString(); ExecuteAction(telemetry); })">
+                        <select class="form-select" @onchange="(e) => SelectAction(telemetry, e.Value.ToString())">
                             <option value="">Выберите действие</option>
                             <option value="Изменить знак ТМ">Изменить знак ТМ</option>
                             <option value="Создать дорасчет">Создать дорасчет</option>
