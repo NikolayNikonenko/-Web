@@ -1,31 +1,54 @@
 ﻿@page "/modelError"
 @using перенос_бд_на_Web.Models
+@using перенос_бд_на_Web.Services
+@using перенос_бд_на_Web.Pages.ModelMistake
 @using Microsoft.EntityFrameworkCore
 @inject ApplicationContext _modelContext
+@inject DataFilterService _dataFilterService
 <PageTitle>Ошибки в модели</PageTitle>
 
 @code {
     private List<ModelErrors> modelErrors = new List<ModelErrors>();
     private List<ModelErrors> filtredModelErrors = new List<ModelErrors>();
+    public List<TMValues> filteredTMValues = new List<TMValues>();
+    private FindErrors findErrors; // Объявляем экземпляр класса FindErrors
     private string currentSortColumn;
     private bool isAscending = true;
     private string searchTerm = string.Empty;
     private bool showSearch = false;
 
-    protected override async Task OnInitializedAsync()
+
+    // Поля для фильтрации
+    private DateTime? startDate;
+    private DateTime? endDate;
+    private bool isThinning = false; // Флаг для включения прореживания
+    private int thinningInterval; // Интервал прореживания
+
+
+    protected override void OnInitialized()
     {
-        try
-        {
-            Console.WriteLine("Fetching data from the database...");
-            modelErrors = await _modelContext.modelErrors.AsNoTracking().ToListAsync();
-            Console.WriteLine($"Fetched {modelErrors.Count} records.");
-            filtredModelErrors = modelErrors;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Ошибка при получении данных: {ex.Message}");
-        }
+        findErrors = new FindErrors(_modelContext); // Инициализация экземпляра
     }
+
+
+    private async Task IdentifyErrors()
+    {
+        await findErrors.CalculateModelErrorsAsync(); // Запуск поиска ошибок
+        modelErrors = await _modelContext.modelErrors.AsNoTracking().ToListAsync(); // Обновляем модель ошибок после выполнения поиска
+        filtredModelErrors = modelErrors; // Обновляем отфильтрованные ошибки
+    }
+
+
+    private async Task ApplyTimeIntervalFilter(bool isThinning)
+    {
+        this.isThinning = isThinning;
+        filteredTMValues = await _dataFilterService.ApplyTimeIntervalFilterAsync(
+            startDate, endDate, isThinning, thinningInterval
+        );
+
+        SortData(currentSortColumn); // Сортируем отфильтрованные данные
+    }
+
 
     private void SortData(string column)
     {
@@ -81,6 +104,37 @@
 
 <h2>Выявление ошибок в модели</h2>
 
+
+<div class="mb-3">
+    <label>Начало временного промежутка:</label>
+    <input type="datetime-local" @bind="startDate" class="form-control" />
+
+    <label>Конец временного промежутка:</label>
+    <input type="datetime-local" @bind="endDate" class="form-control" />
+
+    <div class="form-check mt-2">
+        <input type="checkbox" @bind="isThinning" class="form-check-input" id="thinning" />
+        <label class="form-check-label" for="thinning">Прореживание данных</label>
+    </div>
+
+    @if (isThinning)
+    {
+        <div class="mb-3">
+            <label>Интервал прореживания (в минутах):</label>
+            <input type="number" @bind="thinningInterval" min="1" class="form-control" />
+        </div>
+    }
+
+    <div class="mt-2">
+        <button @onclick="() => ApplyTimeIntervalFilter(false)" class="btn btn-primary me-2">Применить фильтр</button>
+        <button @onclick="() => ApplyTimeIntervalFilter(true)" class="btn btn-secondary">Прореживать данные</button>
+    </div>
+</div>
+
+
+<button @onclick="IdentifyErrors" class="btn btn-danger mb-3">Выявить ошибки</button>
+
+
 @if (showSearch)
 {
     <div class="mb-3">
@@ -126,4 +180,3 @@ else
         </tbody>
     </table>
 }
-

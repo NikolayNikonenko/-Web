@@ -44,6 +44,8 @@ namespace перенос_бд_на_Web
 
             builder.Services.AddScoped<ActionService>();
 
+            builder.Services.AddScoped<DataFilterService>();
+
             builder.Services.AddScoped<CorrData>();
 
             builder.Services.AddScoped<ReliabilityAnalyzer>();
