@@ -39,7 +39,21 @@ public class CorrData
         }
         else if (filteredTMValues == null || !filteredTMValues.Any())
         {
-            filteredTMValues = await _correlation_Context.TMValues.AsNoTracking().ToListAsync();
+            filteredTMValues = await _correlation_Context.TMValues
+        .AsNoTracking()
+        .Select(t => new TMValues
+        {
+            ID = t.ID,
+            IndexTM = t.IndexTM,
+            IzmerValue = t.IzmerValue,
+            OcenValue = t.OcenValue,
+            Id1 = t.Id1,
+            NameTM = t.NameTM,
+            Lagranj = t.Lagranj
+
+            // Добавьте другие необходимые поля, если нужно
+        })
+        .ToListAsync(cancellationToken);
         }
 
         if (!filteredTMValues.Any())
