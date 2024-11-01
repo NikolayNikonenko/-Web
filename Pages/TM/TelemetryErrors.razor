@@ -7,6 +7,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject SliceService sliceService
 @inject ActionService ActionService
+@inject TelemetryMonitoringService MonitoringService
 @inject ApplicationContext _context
 @inject CorrData corr
 @inject IJSRuntime JS
@@ -54,6 +55,8 @@
     private bool showChangeList = false;
     private List<VerificationAction> selectedActions = new();
     private bool showModal = false;
+    private bool isActionConfirmed = false;
+    private bool isTrackingOptionsVisible = false;
 
 
 
@@ -402,6 +405,9 @@
         selectedActions.Clear();
         showModal = false;
         Console.WriteLine("Выбранные действия успешно выполнены.");
+        isActionConfirmed = true;
+        ToggleMonitoringOptions();
+
     }
 
 
@@ -431,6 +437,15 @@
             selectedActions.RemoveAll(a => a.TelemetryId == (int)telemetry.IndexTm);
         }
     }
+
+    private void ShowTrackingOptions()
+    {
+        // Здесь можно открыть выпадающий список с вариантами отслеживания
+        // Например, можно использовать булеву переменную для контроля видимости списка
+        isTrackingOptionsVisible = true;
+    }
+
+
 
 }
 
@@ -554,22 +569,7 @@
         currentProgress = progress; // Обновляем прогресс
         InvokeAsync(StateHasChanged); // Обновляем UI через диспетчер потока
     }
-    // Метод для обработки нажатия кнопки действия
 
-
-    // Метод для выполнения действия
-   // private async Task ExecuteSelectedAction(NedostovernayaTM telemetry)
-   // {
-   //     if(!string.IsNullOrEmpty(selectedAction) && startDate.HasValue && endDate.HasValue)
-   // {
-   //         await ActionService.ExecuteAction(selectedAction, telemetry, startDate.Value, endDate.Value);
-   //     }
-   // else
-   //     {
-   //         Console.WriteLine("Не выбрано действие или интервал времени не задан.");
-   //     }
-   // }
-   //
 }
 
 
@@ -646,6 +646,40 @@
         </div>
     </div>
 }
+
+@if (isActionConfirmed)
+{
+    <div class="alert alert-info mt-3">
+        <h5>Доступные действия:</h5>
+        <div class="mb-2">
+            <button class="btn btn-primary dropdown-toggle" type="button" @onclick="ToggleMonitoringOptions" aria-expanded="false">
+                Выбрать отслеживаемые телеизмерения
+            </button>
+            @if (showOptions)
+            {
+                <ul class="dropdown-menu show">
+                    <li><a class="dropdown-item" @onclick="() => MonitoringService.MonitorAllTMAsync()">Отслеживать изменения для всех ТМ</a></li>
+                    <li><a class="dropdown-item" @onclick="() => MonitoringService.MonitorUnreliableAndQuestionableTMAsync()">Отслеживать изменения для недостоверных и сомнительных ТМ</a></li>
+                    <li><a class="dropdown-item" @onclick="() => MonitoringService.MonitorUnreliableTMAsync()">Отслеживать изменения для недостоверных ТМ</a></li>
+                    <li><a class="dropdown-item" @onclick="() => MonitoringService.MonitorVerifiedTMAsync()">Отслеживать изменения для ТМ, которые были достоверизованы</a></li>
+                    <li><a class="dropdown-item" @onclick="() => MonitoringService.ManualMonitorSetupAsync()">Задать список отслеживаемых ТМ вручную</a></li>
+                </ul>
+            }
+        </div>
+
+        <button class="btn btn-success" @onclick="OnCalculateCorrelation">Рассчитать корреляцию для отслеживаемых ТМ</button>
+    </div>
+}
+
+@code {
+    private bool showOptions = false;
+
+    private void ToggleMonitoringOptions()
+    {
+        showOptions = !showOptions;
+    }
+}
+
 
 
 

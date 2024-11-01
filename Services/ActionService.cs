@@ -13,10 +13,12 @@ namespace перенос_бд_на_Web.Services
         private readonly ISliceService _sliceService;
         private readonly IRastr _rastr;
         private readonly string _fullSaveDirectory;
+        private readonly ApplicationContext _context;
 
-        public ActionService(ISliceService sliceService)
+        public ActionService(ISliceService sliceService, ApplicationContext context)
         {
             _sliceService = sliceService;
+            _context = context;
             _rastr = new Rastr(); // Инициализация IRastr
             _fullSaveDirectory = "D:\\учеба\\магистратура\\3 курс\\диплом ит\\мое\\тесты сохранения файлов";
         }
@@ -61,6 +63,7 @@ namespace перенос_бд_на_Web.Services
                     if (hasChanges)
                     {
                         SaveSlice(path);
+                        await SaveFilePathToDatabase(path);
                     }
                 }
                 catch (Exception ex)
@@ -93,6 +96,21 @@ namespace перенос_бд_на_Web.Services
                 Console.WriteLine($"Срез сохранен в: {saveFilePath}");
             }
         }
+
+        private async Task SaveFilePathToDatabase(string path)
+        {
+            var experimentFile = new ExperimentFiles
+            {
+                Id_file = Guid.NewGuid(),
+                path_experiment_file = path,
+                Id_experiment = Guid.NewGuid() // Можно указать существующий Id эксперимента, если он известен
+            };
+
+            _context.experiment_file.Add(experimentFile);
+            await _context.SaveChangesAsync();
+            Console.WriteLine($"Путь к файлу сохранен в БД: {path}");
+        }
+
 
         // Пример реализации методов для каждого действия
         private async Task<bool> ChangeSign(List<VerificationAction> actions)

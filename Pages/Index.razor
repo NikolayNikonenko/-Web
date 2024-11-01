@@ -6,4 +6,22 @@
 
 Welcome to your new app.
 
+@code {
+    private bool isWebAssembly;
+
+    protected override void OnInitialized()
+    {
+        isWebAssembly = OperatingSystem.IsBrowser();
+    }
+}
+
+@if (isWebAssembly)
+{
+    <p>Приложение работает на Blazor WebAssembly.</p>
+}
+else
+{
+    <p>Приложение работает на Blazor Server.</p>
+}
+
 <SurveyPrompt Title="How is Blazor working for you?" />
