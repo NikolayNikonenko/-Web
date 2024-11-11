@@ -17,14 +17,16 @@ public class CorrData
     }
 
     public async Task CalculationCorrelation(
-     List<TMValues> filteredTMValues,
-     Action<int> progressCallback,
-     Action<bool> setStatusBarVisible,
-     DateTime? startTime = null,
-     DateTime? endTime = null,
-     bool useThinning = false,
-     int thinningStep = 1,
-     CancellationToken cancellationToken = default)
+        List<TMValues> filteredTMValues,
+        Action<int> progressCallback,
+        Action<bool> setStatusBarVisible,
+        DateTime? startTime = null,
+        DateTime? endTime = null,
+        bool useThinning = false,
+        int thinningStep = 1,
+        CancellationToken cancellationToken = default,
+        bool isVerified = false
+        )
     {
         setStatusBarVisible(true); // Отображаем статусбар один раз в начале
         cancellationToken.ThrowIfCancellationRequested();
@@ -129,7 +131,8 @@ public class CorrData
                 CorrTm = correlation,
                 Status = status,
                 MaxLagranj = maxAbsoluteLagrange,
-                AvgLagranj = avgLagrange
+                AvgLagranj = avgLagrange,
+                experiment_label = "Входные данные"
             });
 
             processedCount++;

@@ -9,8 +9,8 @@ namespace перенос_бд_на_Web.Models
         public DbSet<Slices> slices { get; set; }
         public DbSet <ActivePowerImbalance> active_power_imbalance { get; set; }
         public DbSet<ReactivePowerImbalance> reactive_power_imbalance { get; set; }
-        public DbSet <ExperimentFiles> experiment_file { get; set; }
-        public DbSet <ModifiedTMValues> tm_values_after_verification { get; set; }
+        //public DbSet <ExperimentFiles> experiment_file { get; set; }
+        //public DbSet <ModifiedTMValues> tm_values_after_verification { get; set; }
 
 
         public ApplicationContext(DbContextOptions<ApplicationContext> options) : base(options) 

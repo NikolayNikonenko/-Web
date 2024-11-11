@@ -13,6 +13,7 @@
         public double OrderIndex { get; set;  }
         public Guid SliceID { get; set; }
         public double Lagranj { get; set; }
+        public string experiment_label { get; set; }
        // public string SliceFilePath { get; set; }
 
     }

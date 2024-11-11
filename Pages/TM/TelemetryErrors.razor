@@ -8,6 +8,7 @@
 @inject SliceService sliceService
 @inject ActionService ActionService
 @inject TelemetryMonitoringService MonitoringService
+@inject ValidationService ValidationService
 @inject ApplicationContext _context
 @inject CorrData corr
 @inject IJSRuntime JS
@@ -57,6 +58,11 @@
     private bool showModal = false;
     private bool isActionConfirmed = false;
     private bool isTrackingOptionsVisible = false;
+    private List<TMValues> filteredTMValuesAfterValidation = new List<TMValues>();
+
+    private bool showManualMonitorModal;
+    private string manualTMInput;
+    private string errorMessage;
 
 
 
@@ -70,7 +76,6 @@
     {
         try
         {
-            // Загрузка данных о недостоверностях
             tm = await _context.tm.AsNoTracking().ToListAsync();
             filteredTm = tm;
         }
@@ -375,6 +380,11 @@
     }
 
 
+    private async Task ApplyChangesAndCalculateCorrelation()
+    {
+        ConfirmActions();  // Выполнить логику для подтверждения изменений
+        await OnCalculateCorrelation();  // Выполнить расчет корреляции
+    }
 
     private void ToggleSelectedActions()
     {
@@ -424,12 +434,12 @@
 
             // Добавляем выбранное действие
             selectedActions.Add(new VerificationAction
-                {
-                    TelemetryId = (int)telemetry.IndexTm,
-                    ActionName = action,
-                    StartDate = startDate.Value,
-                    EndDate = endDate.Value
-                });
+            {
+                TelemetryId = (int)telemetry.IndexTm,
+                ActionName = action,
+                StartDate = startDate.Value,
+                EndDate = endDate.Value
+            });
         }
         else if (string.IsNullOrEmpty(action))
         {
@@ -444,8 +454,6 @@
         // Например, можно использовать булеву переменную для контроля видимости списка
         isTrackingOptionsVisible = true;
     }
-
-
 
 }
 
@@ -545,6 +553,7 @@
         {
             isCalculating = false;
             isStatusBarVisible = false;
+            cancellationTokenSource.Dispose();
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -570,9 +579,8 @@
         InvokeAsync(StateHasChanged); // Обновляем UI через диспетчер потока
     }
 
+
 }
-
-
 
 <button @onclick="ShowChartInput" class="btn btn-primary mt-2">Показать график корреляции</button>
 
@@ -609,65 +617,79 @@
 
 @if (showModal)
 {
-    <div class="modal fade show" style="display:block;" tabindex="-1" role="dialog">
-        <div class="modal-dialog" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Выбранные действия</h5>
-                    <h6>Выбранный интервал: от @startDate.Value.ToString("g") до @endDate.Value.ToString("g")</h6>
-                    <button type="button" class="close" @onclick="CloseModal" aria-label="Закрыть">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <table class="table table-bordered">
-                        <thead>
-                            <tr>
-                                <th>Индекс ТМ</th>
-                                <th>Действие</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var action in selectedActions)
-                            {
-                                <tr>
-                                    <td>@action.TelemetryId</td>
-                                    <td>@action.ActionName</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Закрыть</button>
-                    <button type="button" class="btn btn-primary" @onclick="ConfirmActions">Применить изменения</button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
-
-@if (isActionConfirmed)
-{
     <div class="alert alert-info mt-3">
-        <h5>Доступные действия:</h5>
-        <div class="mb-2">
+        <h5>Выбранные действия</h5>
+        <h6>Выбранный интервал: от @startDate.Value.ToString("g") до @endDate.Value.ToString("g")</h6>
+
+        <!-- Таблица с выбранными действиями -->
+        <table class="table table-bordered mt-3">
+            <thead>
+                <tr>
+                    <th>Индекс ТМ</th>
+                    <th>Действие</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var action in selectedActions)
+                {
+                    <tr>
+                        <td>@action.TelemetryId</td>
+                        <td>@action.ActionName</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <!-- Кнопка для выбора отслеживаемых телеизмерений и расчета корреляции -->
+        <div class="mt-3">
+            <!-- Кнопка для выбора отслеживаемых телеизмерений -->
             <button class="btn btn-primary dropdown-toggle" type="button" @onclick="ToggleMonitoringOptions" aria-expanded="false">
                 Выбрать отслеживаемые телеизмерения
             </button>
             @if (showOptions)
             {
                 <ul class="dropdown-menu show">
-                    <li><a class="dropdown-item" @onclick="() => MonitoringService.MonitorAllTMAsync()">Отслеживать изменения для всех ТМ</a></li>
-                    <li><a class="dropdown-item" @onclick="() => MonitoringService.MonitorUnreliableAndQuestionableTMAsync()">Отслеживать изменения для недостоверных и сомнительных ТМ</a></li>
-                    <li><a class="dropdown-item" @onclick="() => MonitoringService.MonitorUnreliableTMAsync()">Отслеживать изменения для недостоверных ТМ</a></li>
-                    <li><a class="dropdown-item" @onclick="() => MonitoringService.MonitorVerifiedTMAsync()">Отслеживать изменения для ТМ, которые были достоверизованы</a></li>
-                    <li><a class="dropdown-item" @onclick="() => MonitoringService.ManualMonitorSetupAsync()">Задать список отслеживаемых ТМ вручную</a></li>
+                    <li><a class="dropdown-item" @onclick="async () => filteredTMValuesAfterValidation = await MonitoringService.MonitorAllTMAsync()">Отслеживать изменения для всех ТМ</a></li>
+                    <li><a class="dropdown-item" @onclick="async () => filteredTMValuesAfterValidation = await MonitoringService.MonitorUnreliableAndQuestionableTMAsync()">Отслеживать изменения для недостоверных и сомнительных ТМ</a></li>
+                    <li><a class="dropdown-item" @onclick="async () => filteredTMValuesAfterValidation = await MonitoringService.MonitorUnreliableTMAsync()">Отслеживать изменения для недостоверных ТМ</a></li>
+                    <li><a class="dropdown-item" @onclick="async () => filteredTMValuesAfterValidation = await MonitoringService.MonitorVerifiedTMAsync()">Отслеживать изменения для ТМ, которые были достоверизованы</a></li>
                 </ul>
             }
+            <!-- Отдельная кнопка для ручного ввода списка отслеживаемых ТМ -->
+            <button class="btn btn-secondary mt-2" @onclick="OpenManualMonitorModal">Задать список отслеживаемых ТМ вручную</button>
         </div>
+        @if (showManualMonitorModal)
+        {
+            <div class="modal d-block" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Введите номера ТМ для отслеживания</h5>
+                            <button type="button" class="btn-close" @onclick="CloseManualMonitorModal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <input type="text" class="form-control" @bind="manualTMInput" placeholder="Введите номера ТМ через запятую">
+                            @if (!string.IsNullOrEmpty(errorMessage))
+                            {
+                                <div class="text-danger mt-2">@errorMessage</div>
+                            }
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseManualMonitorModal">Отмена</button>
+                            <button type="button" class="btn btn-primary" @onclick="ValidateAndSubmitManualTMInput">Подтвердить</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
 
-        <button class="btn btn-success" @onclick="OnCalculateCorrelation">Рассчитать корреляцию для отслеживаемых ТМ</button>
+        <!-- Объединенная кнопка для применения изменений и расчета корреляции -->
+        <div class="mt-3">
+            <button class="btn btn-success" @onclick="ApplyChangesAndCalculateCorrelation">
+                Применить изменения и рассчитать корреляцию для отслеживаемых ТМ
+            </button>
+            <button class="btn btn-secondary" @onclick="CloseModal">Закрыть</button>
+        </div>
     </div>
 }
 
@@ -678,9 +700,42 @@
     {
         showOptions = !showOptions;
     }
+
+    private void OpenManualMonitorModal()
+    {
+        showManualMonitorModal = true;
+        errorMessage = string.Empty;
+    }
+
+    private void CloseManualMonitorModal()
+    {
+        showManualMonitorModal = false;
+        manualTMInput = string.Empty;
+        errorMessage = string.Empty;
+    }
+
+    private async Task ValidateAndSubmitManualTMInput()
+    {
+        // Вызываем валидацию через ValidationService
+        var validationResult = await ValidationService.ValidateTMInputAsync(manualTMInput);
+
+        if (!validationResult.IsValid)
+        {
+            errorMessage = string.Join("; ", validationResult.Errors);
+            return;
+        }
+
+        // Преобразуем список строк в список целых чисел
+        var tmNumbers = validationResult.TMNumbers.Select(int.Parse).ToList();
+
+        // Если валидация прошла успешно, выполняем логику для отслеживания
+        filteredTMValuesAfterValidation = await MonitoringService.ManualMonitorSetupAsync(tmNumbers);
+        CloseManualMonitorModal();
+    }
+
+
+
 }
-
-
 
 
 @if (filteredTm == null || !filteredTm.Any())

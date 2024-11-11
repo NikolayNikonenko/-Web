@@ -8,5 +8,6 @@ namespace перенос_бд_на_Web.Models
         public Guid SliceID { get; set; }
         public string SliceName { get; set; }
         public string SlicePath { get; set; }
+        public string experiment_label { get; set; }
     }
 }

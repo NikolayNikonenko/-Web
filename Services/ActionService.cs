@@ -99,7 +99,7 @@ namespace перенос_бд_на_Web.Services
                 Console.WriteLine($"Срез сохранен в: {saveFilePath}");
 
                 // Сохраняем путь к файлу в базе данных
-                var experimentFileId = await SaveFilePathToDatabase(saveFilePath);
+                var experimentFileId = await SaveFilePathToSlicesTable(saveFilePath, subFolder2);
 
                 if (experimentFileId != Guid.Empty)
                 {
@@ -109,20 +109,35 @@ namespace перенос_бд_на_Web.Services
             }
         }
 
-        private async Task<Guid> SaveFilePathToDatabase(string path)
+
+
+        private async Task<Guid> SaveFilePathToSlicesTable(string path, string sliceName)
         {
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationContext>();
-            var experimentFile = new ExperimentFiles
+
+            // Получаем сервис TelemetryMonitoringService из DI контейнера
+            var telemetryMonitoringService = scope.ServiceProvider.GetRequiredService<TelemetryMonitoringService>();
+
+            // Получаем следующую метку для эксперимента
+            var nextExperimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
+
+            // Создаем запись в таблице Slices
+            var sliceRecord = new Slices
             {
-                id_file_after_modified = Guid.NewGuid(),
-                path_experiment_file = path,
+                SliceID = Guid.NewGuid(),
+                SliceName = sliceName,
+                SlicePath = path,
+                experiment_label = nextExperimentLabel
             };
 
-            context.experiment_file.Add(experimentFile);
+            // Добавляем и сохраняем запись в таблице Slices
+            context.slices.Add(sliceRecord);
             await context.SaveChangesAsync();
-            Console.WriteLine($"Путь к файлу сохранен в БД: {path}");
-            return experimentFile.id_file_after_modified;
+
+            Console.WriteLine($"Путь к файлу сохранен в таблицу Slices с меткой эксперимента: {nextExperimentLabel}");
+
+            return sliceRecord.SliceID;
         }
 
         // Метод для заполнения таблицы ModifiedTMValues
@@ -140,6 +155,10 @@ namespace перенос_бд_на_Web.Services
 
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationContext>();
+            var telemetryMonitoringService = scope.ServiceProvider.GetRequiredService<TelemetryMonitoringService>();
+
+            // Получаем следующую метку для эксперимента
+            var nextExperimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
 
             for (int i = 0; i < rowCount; i++)
             {
@@ -151,18 +170,18 @@ namespace перенос_бд_на_Web.Services
                     continue; // Пропускаем строки, не соответствующие условию
                 }
 
-                var modifiedValue = new ModifiedTMValues
+                var modifiedValue = new TMValues
                 {
-                    id_tm_value_after_modified = Guid.NewGuid(),
-                    id_tm_after_modified = $"{numberValue}_{id1Value}", // Формируем составной ключ
-                    izmer_tm_value_after_modified = Convert.ToDouble(izmZnach.get_ZN(i)),
-                    ocen_tm_value_after_modified = Convert.ToDouble(ocenZnach.get_ZN(i)),
-                    lagranj_tm_value_after_modified = Convert.ToDouble(lagrZnach.get_ZN(i)),
-                    id_file_after_modified = idFileAfterModified,
+                    ID = Guid.NewGuid(),
+                    IndexTM = Convert.ToDouble(numCol.get_ZN(i)),
+                    IzmerValue = Convert.ToDouble(izmZnach.get_ZN(i)),
+                    OcenValue = Convert.ToDouble(ocenZnach.get_ZN(i)),
+                    Lagranj = Convert.ToDouble(lagrZnach.get_ZN(i)),
+                    SliceID = idFileAfterModified,
 
                 };
 
-                context.tm_values_after_verification.Add(modifiedValue);
+                context.TMValues.Add(modifiedValue);
             }
 
             await context.SaveChangesAsync();

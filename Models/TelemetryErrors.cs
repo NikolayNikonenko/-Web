@@ -10,7 +10,7 @@
         public double AvgLagranj { get; set; }
         public string NameTM { get; set; }
         public string recomendedActions { get; set; } = "Достоверизация"; // Значение по умолчанию
-        //public DateTime Timestamp { get; set; }
+        public string experiment_label { get; set; }
 
     }
 
