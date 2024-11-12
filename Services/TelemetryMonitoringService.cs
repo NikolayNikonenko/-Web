@@ -32,16 +32,26 @@ namespace перенос_бд_на_Web.Services
 
         public async Task<List<TMValues>> MonitorAllTMAsync()
         {
-            return await _context.TMValues.ToListAsync();
+            var result = await _context.TMValues
+       .GroupBy(tm => new { tm.IndexTM, tm.Id1 })
+       .Select(g => g.First())
+       .ToListAsync();
+
+            // Здесь можно проверить содержимое groupedResult в режиме отладки
+
+            return result;
         }
 
         public async Task<List<TMValues>> MonitorUnreliableAndQuestionableTMAsync()
         {
-            // Получаем список всех IndexTm, соответствующих статусам "Достоверная" или "Сомнительная"
+            // Получаем список всех IndexTm, соответствующих статусам "Недостоверная" или "Сомнительная"
             var result = await (from tmValues in _context.TMValues
                                 join tm in _context.tm on tmValues.IndexTM equals tm.IndexTm
-                                where tm.Status == "Достоверная" || tm.Status == "Сомнительная"
-                                select tmValues).ToListAsync();
+                                where tm.Status == "Недостоверная" || tm.Status == "Сомнительная"
+                                select tmValues)
+                        .GroupBy(tm => new { tm.IndexTM, tm.Id1 })
+                        .Select(g => g.First())
+                        .ToListAsync();
 
             return result;
 
@@ -54,19 +64,20 @@ namespace перенос_бд_на_Web.Services
                                 join tm in _context.tm on tmValue.IndexTM equals tm.IndexTm
                                 where tm.Status == "Недостоверная"
                                 select tmValue)
-                               .ToListAsync();
+                        .GroupBy(tm => new { tm.IndexTM, tm.Id1 })
+                        .Select(g => g.First())
+                        .ToListAsync();
 
             return result;
         }
 
-        public async Task<List<TMValues>> MonitorVerifiedTMAsync()
+        public async Task<List<TMValues>> MonitorVerifiedTMAsync(List<int> telemetryIds)
         {
-            // Выполняем JOIN между таблицами TMValues и tm для получения только "Достоверных" записей
-            var result = await (from tmValue in _context.TMValues
-                                join tm in _context.tm on tmValue.IndexTM equals tm.IndexTm
-                                where tm.Status == "Достоверная"
-                                select tmValue)
-                               .ToListAsync();
+            // Запрашиваем записи из базы данных для выбранных идентификаторов
+            var result = await _context.TMValues
+                                       .Where(tm => telemetryIds.Contains((int)tm.IndexTM))
+                                       .Distinct()
+                                       .ToListAsync();
 
             return result;
         }
@@ -76,6 +87,8 @@ namespace перенос_бд_на_Web.Services
             var tmNumbersAsDouble = tmNumbers.Select(n => (double)n).ToList();
             return await _context.TMValues
                 .Where(tm => tmNumbersAsDouble.Contains(tm.IndexTM))
+                .GroupBy(tm => new { tm.IndexTM, tm.Id1 })
+                .Select(g => g.First())
                 .ToListAsync();
         }
 

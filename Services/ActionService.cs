@@ -31,6 +31,7 @@ namespace перенос_бд_на_Web.Services
             var startDate = actions.Min(a => a.StartDate);
             var endDate = actions.Max(a => a.EndDate);
             var filePathsInRange = await GetFilePathsInRangeAsync(startDate, endDate);
+            int orderIndex = 0;
 
             foreach (var path in filePathsInRange)
             {
@@ -39,31 +40,39 @@ namespace перенос_бд_на_Web.Services
                     _rastr.Load(RG_KOD.RG_REPL, path, "");
                     bool hasChanges = false;
 
-                    foreach (var actionGroup in actions.GroupBy(a => a.ActionName))
+                    // Группируем действия по комбинации TelemetryId и Id1
+                    foreach (var actionGroup in actions.GroupBy(a => new { a.TelemetryId, a.Id1 }))
                     {
-                        switch (actionGroup.Key)
+                        var key = actionGroup.Key;  // Получаем ключ (TelemetryId, Id1)
+
+                        // Здесь можно использовать key.TelemetryId и key.Id1 для сравнения
+                        foreach (var action in actionGroup)
                         {
-                            case "Изменить знак ТМ":
-                                hasChanges |= await ChangeSign(actionGroup.ToList());
-                                break;
+                            switch (action.ActionName)
+                            {
+                                case "Изменить знак ТМ":
+                                    hasChanges |= await ChangeSign(actionGroup.ToList());
+                                    break;
 
-                            case "Создать дорасчет":
-                                hasChanges |= await CreateRecalculation(actionGroup.ToList());
-                                break;
+                                case "Создать дорасчет":
+                                    hasChanges |= await CreateRecalculation(actionGroup.ToList());
+                                    break;
 
-                            case "Исключить из ОС":
-                                hasChanges |= await ExcludeFromOS(actionGroup.ToList());
-                                break;
+                                case "Исключить из ОС":
+                                    hasChanges |= await ExcludeFromOS(actionGroup.ToList());
+                                    break;
 
-                            default:
-                                Console.WriteLine("Не выбрано действие для выполнения.");
-                                break;
+                                default:
+                                    Console.WriteLine("Не выбрано действие для выполнения.");
+                                    break;
+                            }
                         }
                     }
 
                     if (hasChanges)
                     {
-                        SaveSlice(path);
+                        orderIndex++;
+                        SaveSlice(path, orderIndex);
                     }
                 }
                 catch (Exception ex)
@@ -78,7 +87,7 @@ namespace перенос_бд_на_Web.Services
             return await _sliceService.GetFilePathsInRangeAsync(startTime, endTime);
         }
 
-        private async Task SaveSlice(string path)
+        private async Task SaveSlice(string path, double orderIndex)
         {
 
             var pathParts = path.Split('\\');
@@ -98,30 +107,30 @@ namespace перенос_бд_на_Web.Services
                 _rastr.Save(saveFilePath, "");
                 Console.WriteLine($"Срез сохранен в: {saveFilePath}");
 
+
+                using var scope = _scopeFactory.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationContext>();
+
+                // Получаем сервис TelemetryMonitoringService из DI контейнера
+                var telemetryMonitoringService = scope.ServiceProvider.GetRequiredService<TelemetryMonitoringService>();
+
+                // Получаем следующую метку для эксперимента
+                var nextExperimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
+
+
                 // Сохраняем путь к файлу в базе данных
-                var experimentFileId = await SaveFilePathToSlicesTable(saveFilePath, subFolder2);
+                var experimentFileId = await SaveFilePathToSlicesTable(saveFilePath, subFolder2, context, nextExperimentLabel);
 
                 if (experimentFileId != Guid.Empty)
                 {
                     // Заполняем таблицу ModifiedTMValues
-                    await SaveModifiedTMValues(experimentFileId);
+                    await SaveModifiedTMValues(experimentFileId, subFolder2, orderIndex, context, nextExperimentLabel);
                 }
             }
         }
 
-
-
-        private async Task<Guid> SaveFilePathToSlicesTable(string path, string sliceName)
+        private async Task<Guid> SaveFilePathToSlicesTable(string path, string sliceName, ApplicationContext context, string nextExperimentLabel)
         {
-            using var scope = _scopeFactory.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<ApplicationContext>();
-
-            // Получаем сервис TelemetryMonitoringService из DI контейнера
-            var telemetryMonitoringService = scope.ServiceProvider.GetRequiredService<TelemetryMonitoringService>();
-
-            // Получаем следующую метку для эксперимента
-            var nextExperimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
-
             // Создаем запись в таблице Slices
             var sliceRecord = new Slices
             {
@@ -141,24 +150,21 @@ namespace перенос_бд_на_Web.Services
         }
 
         // Метод для заполнения таблицы ModifiedTMValues
-        private async Task SaveModifiedTMValues(Guid idFileAfterModified)
+        private async Task SaveModifiedTMValues(Guid idFileAfterModified, string sliceName, double orderIndex, ApplicationContext context, string nextExperimentLabel)
         {
             ITable tableTIChannel = (ITable)_rastr.Tables.Item("ti");
             ICol numCol = (ICol)tableTIChannel.Cols.Item("Num");
             ICol izmZnach = (ICol)tableTIChannel.Cols.Item("ti_val");
             ICol ocenZnach = (ICol)tableTIChannel.Cols.Item("ti_ocen");
+            ICol privyazka = (ICol)tableTIChannel.Cols.Item("prv_num");
             ICol lagrZnach = (ICol)tableTIChannel.Cols.Item("lagr");
             ICol id1Col = (ICol)tableTIChannel.Cols.Item("id1");
+            ICol NameTm = (ICol)tableTIChannel.Cols.Item("name");
+            ICol Delta = (ICol)tableTIChannel.Cols.Item("dif_oc");
             ICol typeTM = (ICol)tableTIChannel.Cols.Item("type");
             ICol cod_v_OC = (ICol)tableTIChannel.Cols.Item("cod_oc");
             int rowCount = tableTIChannel.Count;
 
-            using var scope = _scopeFactory.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<ApplicationContext>();
-            var telemetryMonitoringService = scope.ServiceProvider.GetRequiredService<TelemetryMonitoringService>();
-
-            // Получаем следующую метку для эксперимента
-            var nextExperimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
 
             for (int i = 0; i < rowCount; i++)
             {
@@ -176,9 +182,15 @@ namespace перенос_бд_на_Web.Services
                     IndexTM = Convert.ToDouble(numCol.get_ZN(i)),
                     IzmerValue = Convert.ToDouble(izmZnach.get_ZN(i)),
                     OcenValue = Convert.ToDouble(ocenZnach.get_ZN(i)),
-                    Lagranj = Convert.ToDouble(lagrZnach.get_ZN(i)),
+                    Privyazka = Convert.ToString(privyazka.get_ZN(i)),
+                    Id1 = Convert.ToInt32(id1Col.get_ZN(i)),
+                    NameTM = Convert.ToString(NameTm.get_ZN(i)),
+                    NumberOfSrez = sliceName,
+                    OrderIndex = orderIndex,
+                    DeltaOcenIzmer = Convert.ToDouble(Delta.get_ZN(i)),
                     SliceID = idFileAfterModified,
-
+                    Lagranj = Convert.ToDouble(lagrZnach.get_ZN(i)),
+                    experiment_label = nextExperimentLabel
                 };
 
                 context.TMValues.Add(modifiedValue);

@@ -101,6 +101,7 @@
         {
             nameof(NedostovernayaTM.ID) => isAscending ? filteredTm.OrderBy(t => t.ID).ToList() : filteredTm.OrderByDescending(t => t.ID).ToList(),
             nameof(NedostovernayaTM.IndexTm) => isAscending ? filteredTm.OrderBy(t => t.IndexTm).ToList() : filteredTm.OrderByDescending(t => t.IndexTm).ToList(),
+            nameof(NedostovernayaTM.Id1) => isAscending ? filteredTm.OrderBy(t => t.Id1).ToList() : filteredTm.OrderByDescending(t => t.Id1).ToList(),
             nameof(NedostovernayaTM.CorrTm) => isAscending ? filteredTm.OrderBy(t => t.CorrTm).ToList() : filteredTm.OrderByDescending(t => t.CorrTm).ToList(),
             nameof(NedostovernayaTM.Status) => isAscending ? filteredTm.OrderBy(t => t.Status).ToList() : filteredTm.OrderByDescending(t => t.Status).ToList(),
             nameof(NedostovernayaTM.MaxLagranj) => isAscending ? filteredTm.OrderBy(t => t.MaxLagranj).ToList() : filteredTm.OrderByDescending(t => t.MaxLagranj).ToList(),
@@ -396,13 +397,24 @@
         showModal = false;
     }
 
+    void AddToSelectedActions(VerificationAction action)
+    {
+        // Проверяем, что комбинация TelemetryId и Id1 уникальна
+        if (!selectedActions.Any(a => a.TelemetryId == action.TelemetryId && a.Id1 == action.Id1))
+        {
+            selectedActions.Add(action);
+        }
+    }
+
     private async Task ConfirmActions()
     {
+        // Создаем новый список для действий, включая каждую запись из selectedActions
         List<VerificationAction> actionsToExecute = selectedActions
             .Select(action => new VerificationAction
                 {
                     ActionName = action.ActionName,
                     TelemetryId = action.TelemetryId,
+                    Id1 = action.Id1,
                     StartDate = action.StartDate,
                     EndDate = action.EndDate
                 })
@@ -417,34 +429,44 @@
         Console.WriteLine("Выбранные действия успешно выполнены.");
         isActionConfirmed = true;
         ToggleMonitoringOptions();
-
     }
+
+
+    private async Task SetFilteredTMValues(List<TMValues> values)
+    {
+        filteredTMValues = values;
+        await InvokeAsync(StateHasChanged); // Обновление интерфейса
+    }
+
 
 
     private void SelectAction(NedostovernayaTM telemetry, string action)
     {
         if (!string.IsNullOrEmpty(action) && startDate.HasValue && endDate.HasValue)
         {
-            var existingAction = selectedActions.FirstOrDefault(a => a.TelemetryId == (int)telemetry.IndexTm);
+            // Проверяем, существует ли уже действие с таким же TelemetryId и Id1
+            var existingAction = selectedActions.FirstOrDefault(a => a.TelemetryId == (int)telemetry.IndexTm && a.Id1 == (int)telemetry.Id1);
+
             if (existingAction != default)
             {
-                // Обновляем действие, если запись уже существует
+                // Удаляем существующую запись, если она совпадает по TelemetryId и Id1
                 selectedActions.Remove(existingAction);
             }
 
-            // Добавляем выбранное действие
+            // Добавляем новое действие для текущего TelemetryId и Id1
             selectedActions.Add(new VerificationAction
-            {
-                TelemetryId = (int)telemetry.IndexTm,
-                ActionName = action,
-                StartDate = startDate.Value,
-                EndDate = endDate.Value
-            });
+                {
+                    TelemetryId = (int)telemetry.IndexTm,
+                    Id1 = (int)telemetry.Id1,
+                    ActionName = action,
+                    StartDate = startDate.Value,
+                    EndDate = endDate.Value
+                });
         }
         else if (string.IsNullOrEmpty(action))
         {
-            // Удаляем действие, если пользователь выбрал пустое значение
-            selectedActions.RemoveAll(a => a.TelemetryId == (int)telemetry.IndexTm);
+            // Удаляем все действия, если пользователь выбрал пустое значение, по сочетанию TelemetryId и Id1
+            selectedActions.RemoveAll(a => a.TelemetryId == (int)telemetry.IndexTm && a.Id1 == (int)telemetry.Id1);
         }
     }
 
@@ -626,6 +648,7 @@
             <thead>
                 <tr>
                     <th>Индекс ТМ</th>
+                    <th>Узел</th>
                     <th>Действие</th>
                 </tr>
             </thead>
@@ -634,6 +657,7 @@
                 {
                     <tr>
                         <td>@action.TelemetryId</td>
+                        <td>@action.Id1</td>
                         <td>@action.ActionName</td>
                     </tr>
                 }
@@ -649,10 +673,15 @@
             @if (showOptions)
             {
                 <ul class="dropdown-menu show">
-                    <li><a class="dropdown-item" @onclick="async () => filteredTMValuesAfterValidation = await MonitoringService.MonitorAllTMAsync()">Отслеживать изменения для всех ТМ</a></li>
-                    <li><a class="dropdown-item" @onclick="async () => filteredTMValuesAfterValidation = await MonitoringService.MonitorUnreliableAndQuestionableTMAsync()">Отслеживать изменения для недостоверных и сомнительных ТМ</a></li>
-                    <li><a class="dropdown-item" @onclick="async () => filteredTMValuesAfterValidation = await MonitoringService.MonitorUnreliableTMAsync()">Отслеживать изменения для недостоверных ТМ</a></li>
-                    <li><a class="dropdown-item" @onclick="async () => filteredTMValuesAfterValidation = await MonitoringService.MonitorVerifiedTMAsync()">Отслеживать изменения для ТМ, которые были достоверизованы</a></li>
+                    <li><a class="dropdown-item" @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorAllTMAsync())">Отслеживать изменения для всех ТМ</a></li>
+                    <li><a class="dropdown-item" @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorUnreliableAndQuestionableTMAsync())">Отслеживать изменения для недостоверных и сомнительных ТМ</a></li>
+                    <li><a class="dropdown-item" @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorUnreliableTMAsync())">Отслеживать изменения для недостоверных ТМ</a></li>
+                    <li>
+                        <a class="dropdown-item"
+                           @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorVerifiedTMAsync(selectedActions.Select(a => a.TelemetryId).ToList()))">
+                            Отслеживать изменения для ТМ, которые были достоверизованы
+                        </a>
+                    </li>
                 </ul>
             }
             <!-- Отдельная кнопка для ручного ввода списка отслеживаемых ТМ -->
@@ -733,7 +762,11 @@
         CloseManualMonitorModal();
     }
 
-
+    private string GetSelectedAction(int telemetryId, int id1)
+    {
+        var action = selectedActions.FirstOrDefault(a => a.TelemetryId == telemetryId && a.Id1 == id1);
+        return action?.ActionName ?? string.Empty;
+    }
 
 }
 
@@ -759,6 +792,9 @@ else
                     </button>
                 </th>
                 <th @onclick="() => SortData(nameof(NedostovernayaTM.CorrTm))">
+                    Узел @(currentSortColumn == nameof(NedostovernayaTM.Id1) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.CorrTm))">
                     Коэффициент корреляции @(currentSortColumn == nameof(NedostovernayaTM.CorrTm) ? (isAscending ? "▲" : "▼") : "")
                 </th>
                 <th @onclick="() => SortData(nameof(NedostovernayaTM.Status))">
@@ -781,12 +817,15 @@ else
                 <tr class="@GetRowClass(telemetry.Status)">
                     <td>@telemetry.ID</td>
                     <td>@telemetry.IndexTm</td>
+                    <td>@telemetry.Id1</td>
                     <td>@telemetry.CorrTm</td>
                     <td>@telemetry.Status</td>
                     <td>@telemetry.MaxLagranj</td>
                     <td>@telemetry.AvgLagranj</td>
                     <td>
-                        <select class="form-select" @onchange="(e) => SelectAction(telemetry, e.Value.ToString())">
+                        <select class="form-select"
+                                value="@GetSelectedAction((int)telemetry.IndexTm, telemetry.Id1)"
+                                @onchange="(e) => SelectAction(telemetry, e.Value.ToString())">
                             <option value="">Выберите действие</option>
                             <option value="Изменить знак ТМ">Изменить знак ТМ</option>
                             <option value="Создать дорасчет">Создать дорасчет</option>

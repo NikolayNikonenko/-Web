@@ -128,6 +128,7 @@ public class CorrData
             {
                 IndexTm = uniquePairTM.IndexTM,
                 NameTM = uniquePairTM.NameTM,
+                Id1 = uniquePairTM.Id1,
                 CorrTm = correlation,
                 Status = status,
                 MaxLagranj = maxAbsoluteLagrange,

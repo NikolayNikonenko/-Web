@@ -11,6 +11,7 @@
         public string NameTM { get; set; }
         public string recomendedActions { get; set; } = "Достоверизация"; // Значение по умолчанию
         public string experiment_label { get; set; }
+        public int Id1 { get; set; }
 
     }
 
