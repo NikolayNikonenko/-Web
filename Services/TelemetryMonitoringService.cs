@@ -29,67 +29,70 @@ namespace перенос_бд_на_Web.Services
             return "Эксперимент 1";
         }
 
-
-        public async Task<List<TMValues>> MonitorAllTMAsync()
+        // метод для выборки набора содежащего все уникальные элементы из filteredTMValues
+        public async Task<List<TMValues>> MonitorAllTMAsync(List<TMValues> filteredTMValues)
         {
-            var result = await _context.TMValues
-       .GroupBy(tm => new { tm.IndexTM, tm.Id1 })
-       .Select(g => g.First())
-       .ToListAsync();
-
-            // Здесь можно проверить содержимое groupedResult в режиме отладки
+            var result = filteredTMValues
+      .GroupBy(tm => new { tm.IndexTM, tm.Id1, tm.Privyazka })
+      .Select(g => g.FirstOrDefault())
+      .ToList();
 
             return result;
         }
-
-        public async Task<List<TMValues>> MonitorUnreliableAndQuestionableTMAsync()
+        // метод для выборки набора содежащего все уникальные элементы из filteredTMValues, статус которых либо "Недостоверная" либо "Сомнительная"
+        public async Task<List<TMValues>> MonitorUnreliableAndQuestionableTMAsync(List<TMValues> filteredTMValues)
         {
-            // Получаем список всех IndexTm, соответствующих статусам "Недостоверная" или "Сомнительная"
-            var result = await (from tmValues in _context.TMValues
-                                join tm in _context.tm on tmValues.IndexTM equals tm.IndexTm
-                                where tm.Status == "Недостоверная" || tm.Status == "Сомнительная"
-                                select tmValues)
-                        .GroupBy(tm => new { tm.IndexTM, tm.Id1 })
-                        .Select(g => g.First())
-                        .ToListAsync();
-
-            return result;
-
-        }
-
-        public async Task<List<TMValues>> MonitorUnreliableTMAsync()
-        {
-            // Выполняем JOIN между таблицами TMValues и tm для получения только "Недостоверных" записей
-            var result = await (from tmValue in _context.TMValues
-                                join tm in _context.tm on tmValue.IndexTM equals tm.IndexTm
-                                where tm.Status == "Недостоверная"
-                                select tmValue)
-                        .GroupBy(tm => new { tm.IndexTM, tm.Id1 })
-                        .Select(g => g.First())
-                        .ToListAsync();
+            var result = (from tmValue in filteredTMValues
+                          join tm in _context.tm
+                          on new { IndexTM = (int)tmValue.IndexTM, tmValue.Id1 }
+                          equals new { IndexTM = (int)tm.IndexTm, tm.Id1 }
+                          where tm.Status == "Недостоверная" || tm.Status == "Сомнительная"
+                          group tmValue by new { tmValue.IndexTM, tmValue.Id1, tmValue.Privyazka } into grouped
+                          select grouped.FirstOrDefault())
+                          .ToList();
 
             return result;
         }
-
-        public async Task<List<TMValues>> MonitorVerifiedTMAsync(List<int> telemetryIds)
+        // метод для выборки набора содежащего все уникальные элементы из filteredTMValues, "Недостоверная"
+        public async Task<List<TMValues>> MonitorUnreliableTMAsync(List<TMValues> filteredTMValues)
         {
-            // Запрашиваем записи из базы данных для выбранных идентификаторов
-            var result = await _context.TMValues
-                                       .Where(tm => telemetryIds.Contains((int)tm.IndexTM))
-                                       .Distinct()
-                                       .ToListAsync();
+            var result = (from tmValue in filteredTMValues
+                          join unreliable in _context.tm
+                          on new { IndexTM = (int)tmValue.IndexTM, tmValue.Id1 } equals new { IndexTM = (int)unreliable.IndexTm, unreliable.Id1 }
+                          where unreliable.Status == "Недостоверная"
+                          group tmValue by new { tmValue.IndexTM, tmValue.Id1, tmValue.Privyazka } into grouped
+                          select grouped.FirstOrDefault())
+                          .ToList();
 
             return result;
         }
-
-        public async Task<List<TMValues>> ManualMonitorSetupAsync(List<int> tmNumbers)
+        // метод для выборки набора содежащего все уникальные элементы для которых проводилась достоверизация
+        public async Task<List<TMValues>> MonitorVerifiedTMAsync(List<(int TelemetryId, int Id1)> telemetryKeys, List<TMValues> filteredTMValues)
         {
+            var result = filteredTMValues
+        .Where(tmValue => telemetryKeys.Any(key =>
+            (int)tmValue.IndexTM == key.TelemetryId && tmValue.Id1 == key.Id1))
+        .GroupBy(tmValue => new { tmValue.IndexTM, tmValue.Id1, tmValue.Privyazka })
+        .Select(group => group.FirstOrDefault()) // Берем первый уникальный элемент из группы
+        .ToList();
+
+            return result;
+        }
+        // метод для выборки набора содежащего все уникальные элементы номера ТМ которых были введены пользователем вручную
+        public async Task<List<TMValues>> ManualMonitorSetupAsync(List<int> tmNumbers, List<TMValues> filteredTMValues)
+        {
+            // Преобразуем числа tmNumbers в тип double
             var tmNumbersAsDouble = tmNumbers.Select(n => (double)n).ToList();
-            return await _context.TMValues
+
+            // Фильтруем список filteredTMValues
+            var result = filteredTMValues
                 .Where(tm => tmNumbersAsDouble.Contains(tm.IndexTM))
-                .GroupBy(tm => new { tm.IndexTM, tm.Id1 })
+                .GroupBy(tm => new { tm.IndexTM, tm.Id1, tm.Privyazka })
                 .Select(g => g.First())
-                .ToListAsync();
+                .ToList();
+
+            // Возвращаем результат
+            return result;
         }
 
         public async Task<bool> CheckIfTMExistsAsync(int indexTM)

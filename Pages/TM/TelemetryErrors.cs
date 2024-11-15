@@ -65,10 +65,9 @@ public class CorrData
         }
 
         var uniquePairsTM = filteredTMValues
-            .Select(s => new { s.IndexTM, s.NameTM, s.Id1 })
+            .Select(s => new { s.IndexTM, s.Id1, s.NameTM })
             .Distinct()
             .OrderBy(x => x.IndexTM)
-            .ThenBy(x => x.NameTM)
             .ThenBy(x => x.Id1)
             .ToList();
 
@@ -79,7 +78,7 @@ public class CorrData
         foreach (var uniquePairTM in uniquePairsTM)
         {
             var tmValuesForPair = filteredTMValues
-                .Where(t => t.IndexTM == uniquePairTM.IndexTM && t.NameTM == uniquePairTM.NameTM)
+                .Where(t => t.IndexTM == uniquePairTM.IndexTM && t.Id1 == uniquePairTM.Id1)
                 .OrderBy(e => e.NumberOfSrez)
                 .ToList();
 

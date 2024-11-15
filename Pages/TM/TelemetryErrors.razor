@@ -57,10 +57,10 @@
     private List<VerificationAction> selectedActions = new();
     private bool showModal = false;
     private bool isActionConfirmed = false;
-    private bool isTrackingOptionsVisible = false;
+    private bool isTrackingOptionsVisible;
     private List<TMValues> filteredTMValuesAfterValidation = new List<TMValues>();
 
-    private bool showManualMonitorModal;
+    private bool showManualMonitorModal=false;
     private string manualTMInput;
     private string errorMessage;
 
@@ -381,11 +381,14 @@
     }
 
 
-    private async Task ApplyChangesAndCalculateCorrelation()
-    {
-        ConfirmActions();  // Выполнить логику для подтверждения изменений
-        await OnCalculateCorrelation();  // Выполнить расчет корреляции
-    }
+    // private async Task ApplyChangesAndCalculateCorrelation()
+    // {
+    //     ConfirmActions(filteredTMValues);  // Выполнить логику для подтверждения изменений
+    //     if (filteredTMValues != null && filteredTMValues.Any())
+    //     {
+    //         await OnCalculateCorrelation(filteredTMValues);  // Выполнить расчет корреляции
+    //     }
+    // }
 
     private void ToggleSelectedActions()
     {
@@ -406,7 +409,7 @@
         }
     }
 
-    private async Task ConfirmActions()
+    private async Task ConfirmActions(List<TMValues> tmValues)
     {
         // Создаем новый список для действий, включая каждую запись из selectedActions
         List<VerificationAction> actionsToExecute = selectedActions
@@ -513,10 +516,11 @@
 </button>
 
 
-<!-- Кнопка для запуска расчёта -->
+<!-- Кнопка для запуска расчёта корреляции для всех ТМ -->
 <button @onclick="OnCalculateCorrelation" class="btn btn-primary mt-2" disabled="@isCalculating">
     Рассчитать корреляцию
 </button>
+
 
 <!-- Кнопка для остановки расчёта -->
 <button @onclick="OnStopCalculation" class="btn btn-danger mt-2" disabled="@(isCalculating == false)">
@@ -539,28 +543,45 @@
     private int currentProgress = 0;
     private CancellationTokenSource cancellationTokenSource;
 
+    // Метод расчета корреляции для всех ТМ
     private async Task OnCalculateCorrelation()
     {
-        if (isCalculating) return; // Если расчёт уже запущен, новый не начнем
+        // Проверяем, запущен ли расчет
+        if (isCalculating) return;
 
-        // Инициализация состояния
+        // Загружаем все данные ТМ, если `filteredTMValues` не задан
+        var tmValues = filteredTMValues ?? await MonitoringService.MonitorAllTMAsync(filteredTMValues);
+        await ExecuteCorrelationCalculation(tmValues);
+    }
+
+    // Метод расчета корреляции для отфильтрованных ТМ (используется в ApplyChangesAndCalculateCorrelation)
+    private async Task OnCalculateCorrelation(List<TMValues> tmValues)
+    {
+        if (isCalculating) return;
+        await ExecuteCorrelationCalculation(tmValues);
+    }
+
+    // Общий метод для расчета корреляции
+    private async Task ExecuteCorrelationCalculation(List<TMValues> tmValues)
+    {
         isCalculating = true;
-        isStatusBarVisible = true; // Показываем статусбар
-        cancellationTokenSource = new CancellationTokenSource(); // Инициализация токена отмены
+        isStatusBarVisible = true;
+        cancellationTokenSource = new CancellationTokenSource();
 
-        await InvokeAsync(StateHasChanged); // Обновляем UI в начале
+        await InvokeAsync(StateHasChanged);
 
         try
         {
+            // Запускаем расчет корреляции с учетом фильтрации данных
             await corr.CalculationCorrelation(
-                filteredTMValues,       // передаем отфильтрованные значения
-                UpdateProgress,         // метод для обновления прогресса
-                SetStatusBarVisible,     // метод для управления видимостью статусбара
-                startDate,              // начальная дата
-                endDate,                // конечная дата
+                tmValues,                // Передаем значения ТМ для расчета
+                UpdateProgress,          // Метод для обновления прогресса
+                SetStatusBarVisible,     // Метод для управления видимостью статусбара
+                startDate,               // Начальная дата
+                endDate,                 // Конечная дата
                 false,
                 1,
-                cancellationTokenSource.Token // передаем токен отмены
+                cancellationTokenSource.Token
             );
         }
         catch (OperationCanceledException)
@@ -580,29 +601,48 @@
         }
     }
 
-    private void OnStopCalculation()
+    // Метод для обновления прогресса
+    private void UpdateProgress(int progress)
     {
-        if (isCalculating && cancellationTokenSource != null)
-        {
-            cancellationTokenSource.Cancel(); // Отменяем текущую задачу
-            isCalculating = false;
-        }
+        currentProgress = progress;
+        InvokeAsync(StateHasChanged);
     }
 
+    // Метод для управления видимостью статусбара
     private void SetStatusBarVisible(bool isVisible)
     {
         isStatusBarVisible = isVisible;
         InvokeAsync(StateHasChanged);
     }
 
-    private void UpdateProgress(int progress)
+    private async Task OnStopCalculation()
     {
-        currentProgress = progress; // Обновляем прогресс
-        InvokeAsync(StateHasChanged); // Обновляем UI через диспетчер потока
+        if (cancellationTokenSource != null)
+        {
+            // Останавливаем текущий расчет
+            cancellationTokenSource.Cancel();
+            cancellationTokenSource.Dispose();
+            cancellationTokenSource = null;
+        }
+
+        // Обновляем состояние интерфейса
+        isCalculating = false;
+        isStatusBarVisible = false;
+        await InvokeAsync(StateHasChanged);
     }
 
 
+    // Метод для применения изменений и расчета корреляции для отфильтрованных ТМ
+    private async Task ApplyChangesAndCalculateCorrelation()
+    {
+        ConfirmActions(filteredTMValues);
+        if (filteredTMValues != null && filteredTMValues.Any())
+        {
+            await OnCalculateCorrelation(filteredTMValues);
+        }
+    }
 }
+
 
 <button @onclick="ShowChartInput" class="btn btn-primary mt-2">Показать график корреляции</button>
 
@@ -673,22 +713,30 @@
             @if (showOptions)
             {
                 <ul class="dropdown-menu show">
-                    <li><a class="dropdown-item" @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorAllTMAsync())">Отслеживать изменения для всех ТМ</a></li>
-                    <li><a class="dropdown-item" @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorUnreliableAndQuestionableTMAsync())">Отслеживать изменения для недостоверных и сомнительных ТМ</a></li>
-                    <li><a class="dropdown-item" @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorUnreliableTMAsync())">Отслеживать изменения для недостоверных ТМ</a></li>
+                    <li><a class="dropdown-item" @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorAllTMAsync(filteredTMValues))">Отслеживать изменения для всех ТМ</a></li>
+                    <li><a class="dropdown-item" @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorUnreliableAndQuestionableTMAsync(filteredTMValues))">Отслеживать изменения для недостоверных и сомнительных ТМ</a></li>
+                    <li><a class="dropdown-item" @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorUnreliableTMAsync(filteredTMValues))">Отслеживать изменения для недостоверных ТМ</a></li>
                     <li>
                         <a class="dropdown-item"
-                           @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorVerifiedTMAsync(selectedActions.Select(a => a.TelemetryId).ToList()))">
+                           @onclick="async () =>
+                            {
+                                var telemetryKeys = selectedActions
+                                    .Select(a => (a.TelemetryId, a.Id1))
+                                    .ToList();
+                                var filteredTMValuesAfteValidation = await MonitoringService.MonitorVerifiedTMAsync(telemetryKeys, filteredTMValues);
+                                await SetFilteredTMValues(filteredTMValues);
+                            }">
                             Отслеживать изменения для ТМ, которые были достоверизованы
                         </a>
                     </li>
                 </ul>
             }
-            <!-- Отдельная кнопка для ручного ввода списка отслеживаемых ТМ -->
             <button class="btn btn-secondary mt-2" @onclick="OpenManualMonitorModal">Задать список отслеживаемых ТМ вручную</button>
+
         </div>
         @if (showManualMonitorModal)
         {
+            <!-- Отдельная кнопка для ручного ввода списка отслеживаемых ТМ -->
             <div class="modal d-block" tabindex="-1">
                 <div class="modal-dialog">
                     <div class="modal-content">
@@ -758,7 +806,7 @@
         var tmNumbers = validationResult.TMNumbers.Select(int.Parse).ToList();
 
         // Если валидация прошла успешно, выполняем логику для отслеживания
-        filteredTMValuesAfterValidation = await MonitoringService.ManualMonitorSetupAsync(tmNumbers);
+        filteredTMValuesAfterValidation = await MonitoringService.ManualMonitorSetupAsync(tmNumbers, filteredTMValues);
         CloseManualMonitorModal();
     }
 
