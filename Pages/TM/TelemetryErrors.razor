@@ -380,16 +380,6 @@
         Console.WriteLine($"Прореживание данных: осталось {filteredTMValues.Count} значений.");
     }
 
-
-    // private async Task ApplyChangesAndCalculateCorrelation()
-    // {
-    //     ConfirmActions(filteredTMValues);  // Выполнить логику для подтверждения изменений
-    //     if (filteredTMValues != null && filteredTMValues.Any())
-    //     {
-    //         await OnCalculateCorrelation(filteredTMValues);  // Выполнить расчет корреляции
-    //     }
-    // }
-
     private void ToggleSelectedActions()
     {
         showModal = !showModal;
@@ -424,7 +414,7 @@
             .ToList();
 
         // Выполнение действий через ActionService
-        await ActionService.ExecuteAction(actionsToExecute);
+        await ActionService.ExecuteAction(actionsToExecute, tmValues);
 
         // Очищаем выбранные действия и закрываем модальное окно
         selectedActions.Clear();
@@ -636,10 +626,12 @@
     private async Task ApplyChangesAndCalculateCorrelation()
     {
         ConfirmActions(filteredTMValues);
-        if (filteredTMValues != null && filteredTMValues.Any())
-        {
-            await OnCalculateCorrelation(filteredTMValues);
-        }
+        int b = 5;
+
+        // if (filteredTMValues != null && filteredTMValues.Any())
+        // {
+        //     await OnCalculateCorrelation(filteredTMValues);
+        // }
     }
 }
 
@@ -713,19 +705,54 @@
             @if (showOptions)
             {
                 <ul class="dropdown-menu show">
-                    <li><a class="dropdown-item" @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorAllTMAsync(filteredTMValues))">Отслеживать изменения для всех ТМ</a></li>
-                    <li><a class="dropdown-item" @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorUnreliableAndQuestionableTMAsync(filteredTMValues))">Отслеживать изменения для недостоверных и сомнительных ТМ</a></li>
-                    <li><a class="dropdown-item" @onclick="async () => await SetFilteredTMValues(await MonitoringService.MonitorUnreliableTMAsync(filteredTMValues))">Отслеживать изменения для недостоверных ТМ</a></li>
+                    <li>
+                        <a class="dropdown-item" 
+                        @onclick="async () => 
+                        {
+                            var newValues = await MonitoringService.MonitorAllTMAsync(filteredTMValues);
+                            await SetFilteredTMValues(newValues);
+                            ToggleMonitoringOptions();
+                        }">
+                        Отслеживать изменения для всех ТМ
+                    </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" 
+                        @onclick="async () => 
+                        {
+                            var newValues = await MonitoringService.MonitorUnreliableAndQuestionableTMAsync(filteredTMValues);
+                            await SetFilteredTMValues(newValues);
+                            ToggleMonitoringOptions();
+                        }">
+                        Отслеживать изменения для недостоверных и сомнительных ТМ
+                    </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item"
+                        @onclick="async () =>
+                        {
+                            var newValues = await MonitoringService.MonitorUnreliableTMAsync(filteredTMValues);
+                            await SetFilteredTMValues(newValues);
+                            ToggleMonitoringOptions();
+                        }">
+                        Отслеживать изменения для недостоверных ТМ
+                    </a>
+                    </li>
                     <li>
                         <a class="dropdown-item"
                            @onclick="async () =>
-                            {
+                           {
                                 var telemetryKeys = selectedActions
                                     .Select(a => (a.TelemetryId, a.Id1))
                                     .ToList();
+
                                 var filteredTMValuesAfteValidation = await MonitoringService.MonitorVerifiedTMAsync(telemetryKeys, filteredTMValues);
-                                await SetFilteredTMValues(filteredTMValues);
-                            }">
+
+                                // Передача обновлённого списка
+                                await SetFilteredTMValues(filteredTMValuesAfteValidation);
+
+                               ToggleMonitoringOptions();
+                           }">
                             Отслеживать изменения для ТМ, которые были достоверизованы
                         </a>
                     </li>
@@ -806,7 +833,11 @@
         var tmNumbers = validationResult.TMNumbers.Select(int.Parse).ToList();
 
         // Если валидация прошла успешно, выполняем логику для отслеживания
-        filteredTMValuesAfterValidation = await MonitoringService.ManualMonitorSetupAsync(tmNumbers, filteredTMValues);
+        var filteredTMValuesAfterValidation = await MonitoringService.ManualMonitorSetupAsync(tmNumbers, filteredTMValues);
+
+        // Передаём результат в SetFilteredTMValues для обновления интерфейса
+        await SetFilteredTMValues(filteredTMValuesAfterValidation);
+
         CloseManualMonitorModal();
     }
 

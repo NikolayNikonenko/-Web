@@ -1,6 +1,8 @@
 ﻿using ASTRALib;
 using Microsoft.Extensions.Options;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using перенос_бд_на_Web.Models;
@@ -25,8 +27,9 @@ namespace перенос_бд_на_Web.Services
         }
 
         // Метод для выполнения действия
-        public async Task ExecuteAction(List<VerificationAction> actions)
+        public async Task ExecuteAction(List<VerificationAction> actions, List<TMValues> tmValues)
         {
+
             // Получаем файлы в диапазоне для всех действий сразу
             var startDate = actions.Min(a => a.StartDate);
             var endDate = actions.Max(a => a.EndDate);
@@ -72,7 +75,7 @@ namespace перенос_бд_на_Web.Services
                     if (hasChanges)
                     {
                         orderIndex++;
-                        SaveSlice(path, orderIndex);
+                        SaveSlice(path, orderIndex, tmValues);
                     }
                 }
                 catch (Exception ex)
@@ -87,7 +90,7 @@ namespace перенос_бд_на_Web.Services
             return await _sliceService.GetFilePathsInRangeAsync(startTime, endTime);
         }
 
-        private async Task SaveSlice(string path, double orderIndex)
+        private async Task SaveSlice(string path, double orderIndex, List<TMValues> tmValues)
         {
 
             var pathParts = path.Split('\\');
@@ -107,24 +110,35 @@ namespace перенос_бд_на_Web.Services
                 _rastr.Save(saveFilePath, "");
                 Console.WriteLine($"Срез сохранен в: {saveFilePath}");
 
-
                 using var scope = _scopeFactory.CreateScope();
                 var context = scope.ServiceProvider.GetRequiredService<ApplicationContext>();
 
                 // Получаем сервис TelemetryMonitoringService из DI контейнера
                 var telemetryMonitoringService = scope.ServiceProvider.GetRequiredService<TelemetryMonitoringService>();
 
-                // Получаем следующую метку для эксперимента
-                var nextExperimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
+                using var transaction = await context.Database.BeginTransactionAsync();
 
-
-                // Сохраняем путь к файлу в базе данных
-                var experimentFileId = await SaveFilePathToSlicesTable(saveFilePath, subFolder2, context, nextExperimentLabel);
-
-                if (experimentFileId != Guid.Empty)
+                try
                 {
-                    // Заполняем таблицу ModifiedTMValues
-                    await SaveModifiedTMValues(experimentFileId, subFolder2, orderIndex, context, nextExperimentLabel);
+                    // Генерация следующей метки после фиксации состояния
+                    await context.SaveChangesAsync();
+                    // Получаем следующую метку для эксперимента
+                    var nextExperimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
+
+                    var experimentFileId = await SaveFilePathToSlicesTable(saveFilePath, subFolder2, context, nextExperimentLabel);
+
+                    if (experimentFileId != Guid.Empty)
+                    {
+                        await SaveModifiedTMValues(experimentFileId, subFolder2, orderIndex, context, nextExperimentLabel, tmValues);
+                    }
+
+                    await transaction.CommitAsync();
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    Console.WriteLine($"Ошибка при сохранении: {ex.Message}");
+                    throw;
                 }
             }
         }
@@ -150,7 +164,7 @@ namespace перенос_бд_на_Web.Services
         }
 
         // Метод для заполнения таблицы ModifiedTMValues
-        private async Task SaveModifiedTMValues(Guid idFileAfterModified, string sliceName, double orderIndex, ApplicationContext context, string nextExperimentLabel)
+        private async Task SaveModifiedTMValues(Guid idFileAfterModified, string sliceName, double orderIndex, ApplicationContext context, string nextExperimentLabel, List<TMValues> tmValues)
         {
             ITable tableTIChannel = (ITable)_rastr.Tables.Item("ti");
             ICol numCol = (ICol)tableTIChannel.Cols.Item("Num");
@@ -165,38 +179,73 @@ namespace перенос_бд_на_Web.Services
             ICol cod_v_OC = (ICol)tableTIChannel.Cols.Item("cod_oc");
             int rowCount = tableTIChannel.Count;
 
+            var relevantCombination = tmValues
+            .Select(tv => new { tv.IndexTM, tv.Id1, tv.Privyazka })
+            .ToHashSet();
 
-            for (int i = 0; i < rowCount; i++)
+            foreach (var tmValue in tmValues)
             {
-                var numberValue = Convert.ToInt32(numCol.get_ZN(i));
-                var id1Value = Convert.ToInt32(id1Col.get_ZN(i));
-
-                if (!IsRelevantTM(typeTM, cod_v_OC, i))
+                // Устанавливаем фильтр для текущего элемента
+                tableTIChannel.SetSel($"Num={(int)tmValue.IndexTM}");
+                // Ищем первую подходящую строку
+                int n = tableTIChannel.FindNextSel[-1];
+                while (n != -1)
                 {
-                    continue; // Пропускаем строки, не соответствующие условию
+                    // Пропускаем строки, не соответствующие дополнительным условиям
+                    if (!IsRelevantTM(typeTM, cod_v_OC, n))
+                    {
+                        n = tableTIChannel.FindNextSel[n];
+                        continue;
+                    }
+                    // Создаем объект TMValues для сохранения
+                    var modifiedValue = new TMValues
+                    {
+                        ID = Guid.NewGuid(),
+                        IndexTM = Convert.ToDouble(numCol.get_ZN(n)),
+                        IzmerValue = Convert.ToDouble(izmZnach.get_ZN(n)),
+                        OcenValue = Convert.ToDouble(ocenZnach.get_ZN(n)),
+                        Privyazka = Convert.ToString(privyazka.get_ZN(n)),
+                        Id1 = Convert.ToInt32(id1Col.get_ZN(n)),
+                        NameTM = Convert.ToString(NameTm.get_ZN(n)),
+                        NumberOfSrez = sliceName,
+                        OrderIndex = orderIndex,
+                        DeltaOcenIzmer = Convert.ToDouble(Delta.get_ZN(n)),
+                        SliceID = idFileAfterModified,
+                        Lagranj = Convert.ToDouble(lagrZnach.get_ZN(n)),
+                        experiment_label = nextExperimentLabel
+                    };
+
+                    context.TMValues.Add(modifiedValue);
+
+                    // Ищем следующую строку
+                    n = tableTIChannel.FindNextSel[n];
                 }
+            }
+            try
+            {
+                Console.WriteLine("Начинаем сохранение изменений...");
+                var affectedRows = await context.SaveChangesAsync();
 
-                var modifiedValue = new TMValues
+                if (affectedRows > 0)
                 {
-                    ID = Guid.NewGuid(),
-                    IndexTM = Convert.ToDouble(numCol.get_ZN(i)),
-                    IzmerValue = Convert.ToDouble(izmZnach.get_ZN(i)),
-                    OcenValue = Convert.ToDouble(ocenZnach.get_ZN(i)),
-                    Privyazka = Convert.ToString(privyazka.get_ZN(i)),
-                    Id1 = Convert.ToInt32(id1Col.get_ZN(i)),
-                    NameTM = Convert.ToString(NameTm.get_ZN(i)),
-                    NumberOfSrez = sliceName,
-                    OrderIndex = orderIndex,
-                    DeltaOcenIzmer = Convert.ToDouble(Delta.get_ZN(i)),
-                    SliceID = idFileAfterModified,
-                    Lagranj = Convert.ToDouble(lagrZnach.get_ZN(i)),
-                    experiment_label = nextExperimentLabel
-                };
-
-                context.TMValues.Add(modifiedValue);
+                    Console.WriteLine($"Успешно сохранено {affectedRows} записей.");
+                }
+                else
+                {
+                    Console.WriteLine("Изменения не были сохранены. Проверьте данные для записи.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка при сохранении данных: {ex.Message}");
             }
 
-            await context.SaveChangesAsync();
+            // Проверка содержимого контекста после добавления данных
+            if (!context.TMValues.Any())
+            {
+                Console.WriteLine("Контекст не содержит записей TMValues после добавления. Проверьте исходные данные и настройки контекста.");
+            }
+
             Console.WriteLine("Данные сохранены в таблицу ModifiedTMValues.");
         }
 

@@ -15,18 +15,34 @@ namespace перенос_бд_на_Web.Services
 
         public async Task<string> GetNextExperimentLabelAsync()
         {
-            var lastExperiment = await _context.TMValues
-                .OrderByDescending(tm => tm.experiment_label)
-                .Select(tm => tm.experiment_label)
-                .FirstOrDefaultAsync();
-
-            if (lastExperiment != null && lastExperiment.StartsWith("Эксперимент"))
+            try
             {
-                var experimentNumber = int.Parse(lastExperiment.Split(' ')[1]);
-                return $"Эксперимент {experimentNumber + 1}";
-            }
+                Console.WriteLine("Получаем последний эксперимент...");
+                var lastExperiment = await _context.TMValues
+    .OrderByDescending(tm => tm.experiment_label)
+    .Take(1)
+    .Select(tm => tm.experiment_label)
+    .FirstOrDefaultAsync();
+                Console.WriteLine($"Последний эксперимент: {lastExperiment}");
 
-            return "Эксперимент 1";
+                if (lastExperiment == null)
+                {
+                    Console.WriteLine("Данных о последнем эксперименте нет.");
+                }
+
+                if (lastExperiment != null && lastExperiment.StartsWith("Эксперимент"))
+                {
+                    var experimentNumber = int.Parse(lastExperiment.Split(' ')[1]);
+                    return $"Эксперимент {experimentNumber + 1}";
+                }
+
+                return "Эксперимент 1";
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка в GetNextExperimentLabelAsync: {ex.Message}");
+                throw;
+            }
         }
 
         // метод для выборки набора содежащего все уникальные элементы из filteredTMValues
