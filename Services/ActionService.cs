@@ -92,16 +92,10 @@ namespace перенос_бд_на_Web.Services
 
         private async Task SaveSlice(string path, double orderIndex, List<TMValues> tmValues)
         {
-
-            var pathParts = path.Split('\\');
-            if (pathParts.Length >= 3)
+            try
             {
-                string subFolder1 = pathParts[^3];
-                string subFolder2 = pathParts[^2];
-                string saveDirectory = System.IO.Path.Combine(_fullSaveDirectory, subFolder1, subFolder2);
-
-                System.IO.Directory.CreateDirectory(saveDirectory);
-                string saveFilePath = System.IO.Path.Combine(saveDirectory, $"{subFolder2}.rg2");
+                // Парсим путь и создаем директорию
+                var (saveFilePath, subFolder2) = PrepareSaveDirectory(path);
 
                 // Оценка состояния перед сохранением данных
                 _rastr.opf("s");
@@ -110,37 +104,74 @@ namespace перенос_бд_на_Web.Services
                 _rastr.Save(saveFilePath, "");
                 Console.WriteLine($"Срез сохранен в: {saveFilePath}");
 
+                // Создаем scope для работы с контекстом
                 using var scope = _scopeFactory.CreateScope();
-                var context = scope.ServiceProvider.GetRequiredService<ApplicationContext>();
+                var serviceProvider = scope.ServiceProvider;
 
-                // Получаем сервис TelemetryMonitoringService из DI контейнера
-                var telemetryMonitoringService = scope.ServiceProvider.GetRequiredService<TelemetryMonitoringService>();
+                var context = serviceProvider.GetRequiredService<ApplicationContext>();
+                var telemetryMonitoringService = serviceProvider.GetRequiredService<TelemetryMonitoringService>();
 
-                using var transaction = await context.Database.BeginTransactionAsync();
+                // Начинаем транзакцию
+                await using var transaction = await context.Database.BeginTransactionAsync();
 
                 try
                 {
-                    // Генерация следующей метки после фиксации состояния
-                    await context.SaveChangesAsync();
-                    // Получаем следующую метку для эксперимента
+                    // Получаем следующую метку эксперимента
                     var nextExperimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
 
+                    // Сохраняем путь в таблицу Slices
                     var experimentFileId = await SaveFilePathToSlicesTable(saveFilePath, subFolder2, context, nextExperimentLabel);
 
                     if (experimentFileId != Guid.Empty)
                     {
-                        await SaveModifiedTMValues(experimentFileId, subFolder2, orderIndex, context, nextExperimentLabel, tmValues);
+                        // Сохраняем модифицированные значения TMValues
+                        await SaveModifiedTMValues(
+                            experimentFileId,
+                            subFolder2,
+                            orderIndex,
+                            context,
+                            nextExperimentLabel,
+                            tmValues
+                        );
                     }
 
+                    // Подтверждаем транзакцию
                     await transaction.CommitAsync();
+                    await context.SaveChangesAsync();
                 }
                 catch (Exception ex)
                 {
+                    // Откатываем транзакцию при ошибке
                     await transaction.RollbackAsync();
-                    Console.WriteLine($"Ошибка при сохранении: {ex.Message}");
+                    Console.WriteLine($"Ошибка при сохранении данных в транзакции: {ex.Message}");
                     throw;
                 }
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Общая ошибка в SaveSlice: {ex.Message}");
+                throw;
+            }
+        }
+
+        private (string saveFilePath, string subFolder2) PrepareSaveDirectory(string path)
+        {
+            var pathParts = path.Split('\\');
+            if (pathParts.Length < 3)
+                throw new ArgumentException("Некорректный путь: недостаточно частей в пути.", nameof(path));
+
+            string subFolder1 = pathParts[^3];
+            string subFolder2 = pathParts[^2];
+            string saveDirectory = Path.Combine(_fullSaveDirectory, subFolder1, subFolder2);
+
+            // Создаем директорию только если она не существует
+            if (!Directory.Exists(saveDirectory))
+            {
+                Directory.CreateDirectory(saveDirectory);
+            }
+
+            string saveFilePath = Path.Combine(saveDirectory, $"{subFolder2}.rg2");
+            return (saveFilePath, subFolder2);
         }
 
         private async Task<Guid> SaveFilePathToSlicesTable(string path, string sliceName, ApplicationContext context, string nextExperimentLabel)
@@ -156,7 +187,7 @@ namespace перенос_бд_на_Web.Services
 
             // Добавляем и сохраняем запись в таблице Slices
             context.slices.Add(sliceRecord);
-            await context.SaveChangesAsync();
+            //await context.SaveChangesAsync();
 
             Console.WriteLine($"Путь к файлу сохранен в таблицу Slices с меткой эксперимента: {nextExperimentLabel}");
 
@@ -192,11 +223,11 @@ namespace перенос_бд_на_Web.Services
                 while (n != -1)
                 {
                     // Пропускаем строки, не соответствующие дополнительным условиям
-                    if (!IsRelevantTM(typeTM, cod_v_OC, n))
-                    {
-                        n = tableTIChannel.FindNextSel[n];
-                        continue;
-                    }
+                    //if (!IsRelevantTM(typeTM, cod_v_OC, n))
+                    //{
+                    //    n = tableTIChannel.FindNextSel[n];
+                    //    continue;
+                    //}
                     // Создаем объект TMValues для сохранения
                     var modifiedValue = new TMValues
                     {
@@ -221,38 +252,38 @@ namespace перенос_бд_на_Web.Services
                     n = tableTIChannel.FindNextSel[n];
                 }
             }
-            try
-            {
-                Console.WriteLine("Начинаем сохранение изменений...");
-                var affectedRows = await context.SaveChangesAsync();
+            //try
+            //{
+            //    Console.WriteLine("Начинаем сохранение изменений...");
+            //    var affectedRows = await context.SaveChangesAsync();
 
-                if (affectedRows > 0)
-                {
-                    Console.WriteLine($"Успешно сохранено {affectedRows} записей.");
-                }
-                else
-                {
-                    Console.WriteLine("Изменения не были сохранены. Проверьте данные для записи.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Ошибка при сохранении данных: {ex.Message}");
-            }
+            //    if (affectedRows > 0)
+            //    {
+            //        Console.WriteLine($"Успешно сохранено {affectedRows} записей.");
+            //    }
+            //    else
+            //    {
+            //        Console.WriteLine("Изменения не были сохранены. Проверьте данные для записи.");
+            //    }
+            //}
+            //catch (Exception ex)
+            //{
+            //    Console.WriteLine($"Ошибка при сохранении данных: {ex.Message}");
+            //}
 
-            // Проверка содержимого контекста после добавления данных
-            if (!context.TMValues.Any())
-            {
-                Console.WriteLine("Контекст не содержит записей TMValues после добавления. Проверьте исходные данные и настройки контекста.");
-            }
+            //// Проверка содержимого контекста после добавления данных
+            //if (!context.TMValues.Any())
+            //{
+            //    Console.WriteLine("Контекст не содержит записей TMValues после добавления. Проверьте исходные данные и настройки контекста.");
+            //}
 
-            Console.WriteLine("Данные сохранены в таблицу ModifiedTMValues.");
+            //Console.WriteLine("Данные сохранены в таблицу ModifiedTMValues.");
         }
 
-        private static bool IsRelevantTM(ICol typeTM, ICol cod_v_OC, int numTm)
-        {
-            return (((int)typeTM.get_ZN(numTm) == 0) || ((int)typeTM.get_ZN(numTm) == 2)) && ((int)cod_v_OC.get_ZN(numTm) == 1);
-        }
+        //private static bool IsRelevantTM(ICol typeTM, ICol cod_v_OC, int numTm)
+        //{
+        //    return (((int)typeTM.get_ZN(numTm) == 0) || ((int)typeTM.get_ZN(numTm) == 2)) && ((int)cod_v_OC.get_ZN(numTm) == 1);
+        //}
 
 
         // Пример реализации методов для каждого действия

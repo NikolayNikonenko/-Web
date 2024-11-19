@@ -18,11 +18,12 @@ namespace перенос_бд_на_Web.Services
             try
             {
                 Console.WriteLine("Получаем последний эксперимент...");
-                var lastExperiment = await _context.TMValues
-    .OrderByDescending(tm => tm.experiment_label)
-    .Take(1)
-    .Select(tm => tm.experiment_label)
-    .FirstOrDefaultAsync();
+                //var lastExperiment = await _context.TMValues
+                //.OrderByDescending(tm => tm.experiment_label)
+                //.Select(tm => tm.experiment_label)
+                //.FirstOrDefaultAsync();
+
+                var lastExperiment = "Экспернимент 1";
                 Console.WriteLine($"Последний эксперимент: {lastExperiment}");
 
                 if (lastExperiment == null)
