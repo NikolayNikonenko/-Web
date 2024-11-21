@@ -18,6 +18,7 @@ namespace перенос_бд_на_Web.Services
         private readonly string _fullSaveDirectory;
         private readonly IServiceScopeFactory _scopeFactory;
 
+
         public ActionService(ISliceService sliceService, IServiceScopeFactory scopeFactory)
         {
             _sliceService = sliceService;
@@ -29,11 +30,21 @@ namespace перенос_бд_на_Web.Services
         // Метод для выполнения действия
         public async Task ExecuteAction(List<VerificationAction> actions, List<TMValues> tmValues)
         {
+            // Создаём scope на уровне метода
+            using var scope = _scopeFactory.CreateScope();
+            var serviceProvider = scope.ServiceProvider;
+            var context = serviceProvider.GetRequiredService<ApplicationContext>();
+            var telemetryMonitoringService = serviceProvider.GetRequiredService<TelemetryMonitoringService>();
+
+            // Генерируем метку эксперимента один раз
+            var experimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
+            Console.WriteLine($"Метка эксперимента: {experimentLabel}");
+
 
             // Получаем файлы в диапазоне для всех действий сразу
             var startDate = actions.Min(a => a.StartDate);
             var endDate = actions.Max(a => a.EndDate);
-            var filePathsInRange = await GetFilePathsInRangeAsync(startDate, endDate);
+            var filePathsInRange = await _sliceService.GetFilePathsInRangeAsync(startDate, endDate);
             int orderIndex = 0;
 
             foreach (var path in filePathsInRange)
@@ -46,9 +57,8 @@ namespace перенос_бд_на_Web.Services
                     // Группируем действия по комбинации TelemetryId и Id1
                     foreach (var actionGroup in actions.GroupBy(a => new { a.TelemetryId, a.Id1 }))
                     {
-                        var key = actionGroup.Key;  // Получаем ключ (TelemetryId, Id1)
+                        var key = actionGroup.Key; // Получаем ключ (TelemetryId, Id1)
 
-                        // Здесь можно использовать key.TelemetryId и key.Id1 для сравнения
                         foreach (var action in actionGroup)
                         {
                             switch (action.ActionName)
@@ -75,7 +85,7 @@ namespace перенос_бд_на_Web.Services
                     if (hasChanges)
                     {
                         orderIndex++;
-                        SaveSlice(path, orderIndex, tmValues);
+                        await SaveSlice(path, orderIndex, tmValues, context, telemetryMonitoringService, experimentLabel);
                     }
                 }
                 catch (Exception ex)
@@ -85,17 +95,20 @@ namespace перенос_бд_на_Web.Services
             }
         }
 
-        private async Task<List<string>> GetFilePathsInRangeAsync(DateTime startTime, DateTime endTime)
-        {
-            return await _sliceService.GetFilePathsInRangeAsync(startTime, endTime);
-        }
-
-        private async Task SaveSlice(string path, double orderIndex, List<TMValues> tmValues)
+        private async Task SaveSlice(
+            string path,
+            double orderIndex,
+            List<TMValues> tmValues,
+            ApplicationContext context,
+            TelemetryMonitoringService telemetryMonitoringService,
+            string experimentLabel
+            )
         {
             try
             {
+
                 // Парсим путь и создаем директорию
-                var (saveFilePath, subFolder2) = PrepareSaveDirectory(path);
+                var (saveFilePath, subFolder2) = PrepareSaveDirectory(path, experimentLabel);
 
                 // Оценка состояния перед сохранением данных
                 _rastr.opf("s");
@@ -104,23 +117,16 @@ namespace перенос_бд_на_Web.Services
                 _rastr.Save(saveFilePath, "");
                 Console.WriteLine($"Срез сохранен в: {saveFilePath}");
 
-                // Создаем scope для работы с контекстом
-                using var scope = _scopeFactory.CreateScope();
-                var serviceProvider = scope.ServiceProvider;
-
-                var context = serviceProvider.GetRequiredService<ApplicationContext>();
-                var telemetryMonitoringService = serviceProvider.GetRequiredService<TelemetryMonitoringService>();
-
                 // Начинаем транзакцию
                 await using var transaction = await context.Database.BeginTransactionAsync();
 
                 try
                 {
                     // Получаем следующую метку эксперимента
-                    var nextExperimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
+                    //var nextExperimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
 
                     // Сохраняем путь в таблицу Slices
-                    var experimentFileId = await SaveFilePathToSlicesTable(saveFilePath, subFolder2, context, nextExperimentLabel);
+                    var experimentFileId = await SaveFilePathToSlicesTable(saveFilePath, subFolder2, context, experimentLabel);
 
                     if (experimentFileId != Guid.Empty)
                     {
@@ -130,14 +136,13 @@ namespace перенос_бд_на_Web.Services
                             subFolder2,
                             orderIndex,
                             context,
-                            nextExperimentLabel,
+                            experimentLabel,
                             tmValues
                         );
                     }
 
                     // Подтверждаем транзакцию
                     await transaction.CommitAsync();
-                    await context.SaveChangesAsync();
                 }
                 catch (Exception ex)
                 {
@@ -154,7 +159,7 @@ namespace перенос_бд_на_Web.Services
             }
         }
 
-        private (string saveFilePath, string subFolder2) PrepareSaveDirectory(string path)
+        private (string saveFilePath, string subFolder2) PrepareSaveDirectory(string path, string experimentLabel)
         {
             var pathParts = path.Split('\\');
             if (pathParts.Length < 3)
@@ -162,7 +167,18 @@ namespace перенос_бд_на_Web.Services
 
             string subFolder1 = pathParts[^3];
             string subFolder2 = pathParts[^2];
-            string saveDirectory = Path.Combine(_fullSaveDirectory, subFolder1, subFolder2);
+
+            // Формируем текущую дату и время
+            string currentDate = DateTime.Now.ToString("dd_MM_yy");
+
+
+            string saveDirectory = Path.Combine(
+         _fullSaveDirectory,                     
+         currentDate,
+         experimentLabel,
+         subFolder2                              
+         );
+
 
             // Создаем директорию только если она не существует
             if (!Directory.Exists(saveDirectory))
@@ -187,7 +203,7 @@ namespace перенос_бд_на_Web.Services
 
             // Добавляем и сохраняем запись в таблице Slices
             context.slices.Add(sliceRecord);
-            //await context.SaveChangesAsync();
+            await context.SaveChangesAsync();
 
             Console.WriteLine($"Путь к файлу сохранен в таблицу Slices с меткой эксперимента: {nextExperimentLabel}");
 
@@ -195,7 +211,13 @@ namespace перенос_бд_на_Web.Services
         }
 
         // Метод для заполнения таблицы ModifiedTMValues
-        private async Task SaveModifiedTMValues(Guid idFileAfterModified, string sliceName, double orderIndex, ApplicationContext context, string nextExperimentLabel, List<TMValues> tmValues)
+        private async Task SaveModifiedTMValues(
+    Guid idFileAfterModified,
+    string sliceName,
+    double orderIndex,
+    ApplicationContext context,
+    string nextExperimentLabel,
+    List<TMValues> tmValues)
         {
             ITable tableTIChannel = (ITable)_rastr.Tables.Item("ti");
             ICol numCol = (ICol)tableTIChannel.Cols.Item("Num");
@@ -208,35 +230,64 @@ namespace перенос_бд_на_Web.Services
             ICol Delta = (ICol)tableTIChannel.Cols.Item("dif_oc");
             ICol typeTM = (ICol)tableTIChannel.Cols.Item("type");
             ICol cod_v_OC = (ICol)tableTIChannel.Cols.Item("cod_oc");
-            int rowCount = tableTIChannel.Count;
 
-            var relevantCombination = tmValues
-            .Select(tv => new { tv.IndexTM, tv.Id1, tv.Privyazka })
-            .ToHashSet();
+            // Преобразуем список tmValues в HashSet для быстрого поиска
+            var tmValuesSet = tmValues
+                .Select(tv => new { tv.IndexTM, tv.Id1, tv.Privyazka })
+                .ToHashSet();
 
-            foreach (var tmValue in tmValues)
+            var newValues = new List<TMValues>();
+
+            // Перебираем каждое уникальное значение из входного списка
+            foreach (var tmValue in tmValues.DistinctBy(tv => new { tv.IndexTM, tv.Id1, tv.Privyazka }))
             {
-                // Устанавливаем фильтр для текущего элемента
+                // Фильтруем строки таблицы по текущему IndexTM
                 tableTIChannel.SetSel($"Num={(int)tmValue.IndexTM}");
-                // Ищем первую подходящую строку
                 int n = tableTIChannel.FindNextSel[-1];
+
                 while (n != -1)
                 {
-                    // Пропускаем строки, не соответствующие дополнительным условиям
-                    //if (!IsRelevantTM(typeTM, cod_v_OC, n))
-                    //{
-                    //    n = tableTIChannel.FindNextSel[n];
-                    //    continue;
-                    //}
-                    // Создаем объект TMValues для сохранения
+                    // Считываем значения полей из текущей строки
+                    var currentCombination = new
+                    {
+                        IndexTM = Convert.ToDouble(numCol.get_ZN(n)),
+                        Id1 = Convert.ToInt32(id1Col.get_ZN(n)),
+                        Privyazka = Convert.ToString(privyazka.get_ZN(n))
+                    };
+
+                    // Проверяем, совпадает ли сочетание с текущей записью из tmValues
+                    if (!tmValuesSet.Contains(currentCombination))
+                    {
+                        n = tableTIChannel.FindNextSel[n];
+                        continue;
+                    }
+
+                    // Проверяем, что запись ещё не добавлена
+                    if (newValues.Any(v =>
+                        v.IndexTM == currentCombination.IndexTM &&
+                        v.Id1 == currentCombination.Id1 &&
+                        v.Privyazka == currentCombination.Privyazka))
+                    {
+                        n = tableTIChannel.FindNextSel[n];
+                        continue;
+                    }
+
+                    // Проверяем дополнительные условия
+                    if (!IsRelevantTM(typeTM, cod_v_OC, n))
+                    {
+                        n = tableTIChannel.FindNextSel[n];
+                        continue;
+                    }
+
+                    // Создаём новую запись для сохранения
                     var modifiedValue = new TMValues
                     {
                         ID = Guid.NewGuid(),
-                        IndexTM = Convert.ToDouble(numCol.get_ZN(n)),
+                        IndexTM = currentCombination.IndexTM,
                         IzmerValue = Convert.ToDouble(izmZnach.get_ZN(n)),
                         OcenValue = Convert.ToDouble(ocenZnach.get_ZN(n)),
-                        Privyazka = Convert.ToString(privyazka.get_ZN(n)),
-                        Id1 = Convert.ToInt32(id1Col.get_ZN(n)),
+                        Privyazka = currentCombination.Privyazka,
+                        Id1 = currentCombination.Id1,
                         NameTM = Convert.ToString(NameTm.get_ZN(n)),
                         NumberOfSrez = sliceName,
                         OrderIndex = orderIndex,
@@ -246,44 +297,27 @@ namespace перенос_бд_на_Web.Services
                         experiment_label = nextExperimentLabel
                     };
 
-                    context.TMValues.Add(modifiedValue);
+                    newValues.Add(modifiedValue);
 
-                    // Ищем следующую строку
+                    // Переходим к следующей строке
                     n = tableTIChannel.FindNextSel[n];
                 }
             }
-            //try
-            //{
-            //    Console.WriteLine("Начинаем сохранение изменений...");
-            //    var affectedRows = await context.SaveChangesAsync();
 
-            //    if (affectedRows > 0)
-            //    {
-            //        Console.WriteLine($"Успешно сохранено {affectedRows} записей.");
-            //    }
-            //    else
-            //    {
-            //        Console.WriteLine("Изменения не были сохранены. Проверьте данные для записи.");
-            //    }
-            //}
-            //catch (Exception ex)
-            //{
-            //    Console.WriteLine($"Ошибка при сохранении данных: {ex.Message}");
-            //}
+            // Сохраняем найденные записи одним запросом
+            if (newValues.Any())
+            {
+                await context.TMValues.AddRangeAsync(newValues);
+                await context.SaveChangesAsync();
+            }
 
-            //// Проверка содержимого контекста после добавления данных
-            //if (!context.TMValues.Any())
-            //{
-            //    Console.WriteLine("Контекст не содержит записей TMValues после добавления. Проверьте исходные данные и настройки контекста.");
-            //}
-
-            //Console.WriteLine("Данные сохранены в таблицу ModifiedTMValues.");
+            Console.WriteLine($"Сохранено {newValues.Count} новых записей в таблицу TMValues.");
         }
 
-        //private static bool IsRelevantTM(ICol typeTM, ICol cod_v_OC, int numTm)
-        //{
-        //    return (((int)typeTM.get_ZN(numTm) == 0) || ((int)typeTM.get_ZN(numTm) == 2)) && ((int)cod_v_OC.get_ZN(numTm) == 1);
-        //}
+        private static bool IsRelevantTM(ICol typeTM, ICol cod_v_OC, int numTm)
+        {
+            return (((int)typeTM.get_ZN(numTm) == 0) || ((int)typeTM.get_ZN(numTm) == 2));
+        }
 
 
         // Пример реализации методов для каждого действия

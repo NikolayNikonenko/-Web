@@ -392,7 +392,7 @@
 
     void AddToSelectedActions(VerificationAction action)
     {
-        // Проверяем, что комбинация TelemetryId и Id1 уникальна
+        // Проверяем, что комбинация TelemetryId и Id1 уникальн
         if (!selectedActions.Any(a => a.TelemetryId == action.TelemetryId && a.Id1 == action.Id1))
         {
             selectedActions.Add(action);
@@ -417,7 +417,7 @@
         await ActionService.ExecuteAction(actionsToExecute, tmValues);
 
         // Очищаем выбранные действия и закрываем модальное окно
-        selectedActions.Clear();
+        //selectedActions.Clear();
         showModal = false;
         Console.WriteLine("Выбранные действия успешно выполнены.");
         isActionConfirmed = true;
