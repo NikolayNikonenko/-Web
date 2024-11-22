@@ -33,6 +33,7 @@
     private List<NedostovernayaTM> tm = new List<NedostovernayaTM>();
     private List<NedostovernayaTM> filteredTm = new List<NedostovernayaTM>();
     public List<TMValues> filteredTMValues = new List<TMValues>();
+    private List<TMValues> originalTMValues; // Исходный набор данных
     private string currentSortColumn;
     private bool isAscending = true;
     private string searchTerm = string.Empty;
@@ -427,6 +428,12 @@
 
     private async Task SetFilteredTMValues(List<TMValues> values)
     {
+        // Сохраняем исходное состояние, если оно ещё не сохранено
+        if (originalTMValues == null)
+        {
+            originalTMValues = new List<TMValues>(filteredTMValues);
+        }
+        // Обновляем filteredTMValues
         filteredTMValues = values;
         await InvokeAsync(StateHasChanged); // Обновление интерфейса
     }
@@ -625,7 +632,22 @@
     // Метод для применения изменений и расчета корреляции для отфильтрованных ТМ
     private async Task ApplyChangesAndCalculateCorrelation()
     {
-        ConfirmActions(filteredTMValues);
+        try
+        {
+            ConfirmActions(filteredTMValues);
+        }
+        finally
+        {
+            // Восстанавливаем исходное состояние из originalTMValues
+            if (originalTMValues != null)
+            {
+                filteredTMValues = originalTMValues;
+                originalTMValues = null; // Сбрасываем оригинал после восстановления
+            }
+
+            // Обновляем интерфейс
+            await InvokeAsync(StateHasChanged);
+        }
         int b = 5;
 
         // if (filteredTMValues != null && filteredTMValues.Any())
@@ -709,7 +731,7 @@
                         <a class="dropdown-item" 
                         @onclick="async () => 
                         {
-                            var newValues = await MonitoringService.MonitorAllTMAsync(filteredTMValues);
+                            var newValues = await MonitoringService.MonitorAllTMAsync(filteredTMValues.ToList());
                             await SetFilteredTMValues(newValues);
                             ToggleMonitoringOptions();
                         }">
@@ -720,7 +742,7 @@
                         <a class="dropdown-item" 
                         @onclick="async () => 
                         {
-                            var newValues = await MonitoringService.MonitorUnreliableAndQuestionableTMAsync(filteredTMValues);
+                            var newValues = await MonitoringService.MonitorUnreliableAndQuestionableTMAsync(filteredTMValues.ToList());
                             await SetFilteredTMValues(newValues);
                             ToggleMonitoringOptions();
                         }">
@@ -731,7 +753,7 @@
                         <a class="dropdown-item"
                         @onclick="async () =>
                         {
-                            var newValues = await MonitoringService.MonitorUnreliableTMAsync(filteredTMValues);
+                            var newValues = await MonitoringService.MonitorUnreliableTMAsync(filteredTMValues.ToList());
                             await SetFilteredTMValues(newValues);
                             ToggleMonitoringOptions();
                         }">
@@ -746,7 +768,7 @@
                                     .Select(a => (a.TelemetryId, a.Id1))
                                     .ToList();
 
-                                var filteredTMValuesAfteValidation = await MonitoringService.MonitorVerifiedTMAsync(telemetryKeys, filteredTMValues);
+                                var filteredTMValuesAfteValidation = await MonitoringService.MonitorVerifiedTMAsync(telemetryKeys, filteredTMValues.ToList());
 
                                 // Передача обновлённого списка
                                 await SetFilteredTMValues(filteredTMValuesAfteValidation);
@@ -833,7 +855,7 @@
         var tmNumbers = validationResult.TMNumbers.Select(int.Parse).ToList();
 
         // Если валидация прошла успешно, выполняем логику для отслеживания
-        var filteredTMValuesAfterValidation = await MonitoringService.ManualMonitorSetupAsync(tmNumbers, filteredTMValues);
+        var filteredTMValuesAfterValidation = await MonitoringService.ManualMonitorSetupAsync(tmNumbers, filteredTMValues.ToList());
 
         // Передаём результат в SetFilteredTMValues для обновления интерфейса
         await SetFilteredTMValues(filteredTMValuesAfterValidation);
