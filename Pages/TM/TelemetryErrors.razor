@@ -65,6 +65,13 @@
     private string manualTMInput;
     private string errorMessage;
 
+    private List<TMValues> selectedTMValues = new();
+    private List<TMValues> manualTMValues = new();
+
+    private bool isManualInput = false;
+
+    private List<int> manualTMInputNumbers = new List<int>();
+
 
 
     protected override async Task OnInitializedAsync()
@@ -433,8 +440,20 @@
         {
             originalTMValues = new List<TMValues>(filteredTMValues);
         }
-        // Обновляем filteredTMValues
+
+        // Обновляем основной список
         filteredTMValues = values;
+
+        // Разделяем данные в зависимости от контекста (ручной ввод или выбор)
+        if (isManualInput)
+        {
+            manualTMValues = new List<TMValues>(values);
+        }
+        else
+        {
+            selectedTMValues = new List<TMValues>(values);
+        }
+
         await InvokeAsync(StateHasChanged); // Обновление интерфейса
     }
 
@@ -634,7 +653,30 @@
     {
         try
         {
+            // Подтверждаем действия для текущего списка
             ConfirmActions(filteredTMValues);
+
+            // Объединяем наборы из выпадающего списка и вручную введённые номера ТМ
+            var selectedTMValues = filteredTMValues;
+
+            if (manualTMInputNumbers != null && manualTMInputNumbers.Any())
+            {
+                // Преобразуем номера из ручного ввода в список TMValues
+                var manualTMValues = await MonitoringService.ManualMonitorSetupAsync(manualTMInputNumbers, selectedTMValues.ToList());
+
+                // Объединяем списки и удаляем дубликаты
+                selectedTMValues = selectedTMValues
+                    .Union(manualTMValues)
+                    .GroupBy(tm => new { tm.IndexTM, tm.Id1, tm.Privyazka })
+                    .Select(group => group.First())
+                    .ToList();
+            }
+
+            // Выполняем расчёт корреляции для объединенного списка
+            if (selectedTMValues != null && selectedTMValues.Any())
+            {
+                //await OnCalculateCorrelation(selectedTMValues);
+            }
         }
         finally
         {
@@ -648,12 +690,6 @@
             // Обновляем интерфейс
             await InvokeAsync(StateHasChanged);
         }
-        int b = 5;
-
-        // if (filteredTMValues != null && filteredTMValues.Any())
-        // {
-        //     await OnCalculateCorrelation(filteredTMValues);
-        // }
     }
 }
 
@@ -768,10 +804,10 @@
                                     .Select(a => (a.TelemetryId, a.Id1))
                                     .ToList();
 
-                                var filteredTMValuesAfteValidation = await MonitoringService.MonitorVerifiedTMAsync(telemetryKeys, filteredTMValues.ToList());
+                                var newValues = await MonitoringService.MonitorVerifiedTMAsync(telemetryKeys, filteredTMValues.ToList());
 
                                 // Передача обновлённого списка
-                                await SetFilteredTMValues(filteredTMValuesAfteValidation);
+                                await SetFilteredTMValues(newValues);
 
                                ToggleMonitoringOptions();
                            }">
@@ -802,11 +838,27 @@
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" @onclick="CloseManualMonitorModal">Отмена</button>
-                            <button type="button" class="btn btn-primary" @onclick="ValidateAndSubmitManualTMInput">Подтвердить</button>
+                            <button type="button" class="btn btn-primary" @onclick="ValidateAndSubmitManualTMInput">Подтвердить вееденные для отслеживания ТИ</button>
                         </div>
                     </div>
                 </div>
             </div>
+        }
+        <!-- Проверка наличия данных в обоих списках -->
+        @if (selectedTMValues.Any() && manualTMValues.Any())
+        {
+            <button class="btn btn-primary mt-2"
+                    @onclick="async () =>
+            {
+                // Объединяем данные
+                var combinedSet = await MonitoringService.CombineMonitoringSetsAsync(
+                    selectedTMValues, manualTMValues);
+
+                // Обновляем интерфейс
+                await SetFilteredTMValues(combinedSet);
+            }">
+                Объединить выбранный готовый набор и введённые вручную ТМ для отслеживания
+            </button>
         }
 
         <!-- Объединенная кнопка для применения изменений и расчета корреляции -->
@@ -824,6 +876,7 @@
 
     private void ToggleMonitoringOptions()
     {
+        isManualInput = false;
         showOptions = !showOptions;
     }
 
@@ -842,25 +895,51 @@
 
     private async Task ValidateAndSubmitManualTMInput()
     {
-        // Вызываем валидацию через ValidationService
-        var validationResult = await ValidationService.ValidateTMInputAsync(manualTMInput);
+        isManualInput = true; // Указываем, что данные вводятся вручную
 
-        if (!validationResult.IsValid)
+        try
         {
-            errorMessage = string.Join("; ", validationResult.Errors);
-            return;
+            // Вызываем валидацию через ValidationService
+            var validationResult = await ValidationService.ValidateTMInputAsync(manualTMInput);
+
+            if (!validationResult.IsValid)
+            {
+                errorMessage = string.Join("; ", validationResult.Errors);
+                return;
+            }
+
+            // Преобразуем список строк в список целых чисел
+            var tmNumbers = validationResult.TMNumbers.Select(int.Parse).ToList();
+
+            // **Сбрасываем filteredTMValues к исходному состоянию**
+            if (originalTMValues != null)
+            {
+                filteredTMValues = new List<TMValues>(originalTMValues);
+            }
+
+            // Если валидация прошла успешно, выполняем логику для отслеживания
+            var filteredTMValuesAfterValidation =
+                await MonitoringService.ManualMonitorSetupAsync(tmNumbers, filteredTMValues.ToList());
+
+            // Если найденных значений нет, выводим сообщение
+            if (filteredTMValuesAfterValidation == null || !filteredTMValuesAfterValidation.Any())
+            {
+                errorMessage = "Не найдено подходящих значений.";
+                return;
+            }
+
+            // Передаём результат в SetFilteredTMValues для обновления интерфейса
+            await SetFilteredTMValues(filteredTMValuesAfterValidation);
+
+            // Закрываем модальное окно
+            CloseManualMonitorModal();
         }
-
-        // Преобразуем список строк в список целых чисел
-        var tmNumbers = validationResult.TMNumbers.Select(int.Parse).ToList();
-
-        // Если валидация прошла успешно, выполняем логику для отслеживания
-        var filteredTMValuesAfterValidation = await MonitoringService.ManualMonitorSetupAsync(tmNumbers, filteredTMValues.ToList());
-
-        // Передаём результат в SetFilteredTMValues для обновления интерфейса
-        await SetFilteredTMValues(filteredTMValuesAfterValidation);
-
-        CloseManualMonitorModal();
+        catch (Exception ex)
+        {
+            // Логируем ошибку и выводим сообщение
+            Console.WriteLine($"Ошибка при ручной настройке мониторинга: {ex.Message}");
+            errorMessage = "Произошла ошибка при обработке данных. Попробуйте снова.";
+        }
     }
 
     private string GetSelectedAction(int telemetryId, int id1)

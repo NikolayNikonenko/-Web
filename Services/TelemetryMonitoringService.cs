@@ -111,12 +111,28 @@ namespace перенос_бд_на_Web.Services
             // Возвращаем результат
             return result;
         }
+        public async Task<List<TMValues>> CombineMonitoringSetsAsync(
+        List<TMValues> selectedTMValues, List<TMValues> manualTMValues)
+        {
+            var combined = selectedTMValues
+                .Concat(manualTMValues) // Объединяем два списка
+                .GroupBy(tm => new { tm.IndexTM, tm.Id1, tm.Privyazka }) // Группируем по уникальным ключам
+                .Select(g => g.First()) // Берем первый элемент каждой группы
+                .ToList();
+
+            return await Task.FromResult(combined); // Возвращаем объединенный список
+        }
+
+
+
 
         public async Task<bool> CheckIfTMExistsAsync(int indexTM)
         {
             // Предполагаем, что `TMValues` — это таблица в вашем `ApplicationContext`, содержащая номера телеметрии
             return await _context.TMValues.AnyAsync(tm => tm.IndexTM == indexTM);
         }
+
+
 
     }
 }
