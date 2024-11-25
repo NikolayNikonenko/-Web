@@ -675,7 +675,7 @@
             // Выполняем расчёт корреляции для объединенного списка
             if (selectedTMValues != null && selectedTMValues.Any())
             {
-                //await OnCalculateCorrelation(selectedTMValues);
+                await OnCalculateCorrelation(selectedTMValues);
             }
         }
         finally
@@ -821,7 +821,7 @@
         </div>
         @if (showManualMonitorModal)
         {
-            <!-- Отдельная кнопка для ручного ввода списка отслеживаемых ТМ -->
+            <!-- Модальное окно для ручного ввода списка отслеживаемых ТМ -->
             <div class="modal d-block" tabindex="-1">
                 <div class="modal-dialog">
                     <div class="modal-content">
@@ -830,6 +830,7 @@
                             <button type="button" class="btn-close" @onclick="CloseManualMonitorModal"></button>
                         </div>
                         <div class="modal-body">
+                            <!-- Поле ввода номеров ТМ -->
                             <input type="text" class="form-control" @bind="manualTMInput" placeholder="Введите номера ТМ через запятую">
                             @if (!string.IsNullOrEmpty(errorMessage))
                             {
@@ -837,28 +838,23 @@
                             }
                         </div>
                         <div class="modal-footer">
+                            <!-- Кнопка отмены -->
                             <button type="button" class="btn btn-secondary" @onclick="CloseManualMonitorModal">Отмена</button>
-                            <button type="button" class="btn btn-primary" @onclick="ValidateAndSubmitManualTMInput">Подтвердить вееденные для отслеживания ТИ</button>
+                            <!-- Кнопка подтверждения ручного ввода -->
+                            <button type="button" class="btn btn-primary" @onclick="ValidateAndSubmitManualTMInput">
+                                Подтвердить только введённые вручную ТМ
+                            </button>
+                            <!-- Кнопка объединения -->
+                            @if (selectedTMValues.Any() || !string.IsNullOrEmpty(manualTMInput))
+                            {
+                                <button class="btn btn-primary" @onclick="async () => await CombineAndSubmitSets()">
+                                    Объединить выбранный готовый набор и введённые вручную ТМ
+                                </button>
+                            }
                         </div>
                     </div>
                 </div>
             </div>
-        }
-        <!-- Проверка наличия данных в обоих списках -->
-        @if (selectedTMValues.Any() && manualTMValues.Any())
-        {
-            <button class="btn btn-primary mt-2"
-                    @onclick="async () =>
-            {
-                // Объединяем данные
-                var combinedSet = await MonitoringService.CombineMonitoringSetsAsync(
-                    selectedTMValues, manualTMValues);
-
-                // Обновляем интерфейс
-                await SetFilteredTMValues(combinedSet);
-            }">
-                Объединить выбранный готовый набор и введённые вручную ТМ для отслеживания
-            </button>
         }
 
         <!-- Объединенная кнопка для применения изменений и расчета корреляции -->
@@ -911,7 +907,7 @@
             // Преобразуем список строк в список целых чисел
             var tmNumbers = validationResult.TMNumbers.Select(int.Parse).ToList();
 
-            // **Сбрасываем filteredTMValues к исходному состоянию**
+            // Сбрасываем filteredTMValues к исходному состоянию
             if (originalTMValues != null)
             {
                 filteredTMValues = new List<TMValues>(originalTMValues);
@@ -939,6 +935,26 @@
             // Логируем ошибку и выводим сообщение
             Console.WriteLine($"Ошибка при ручной настройке мониторинга: {ex.Message}");
             errorMessage = "Произошла ошибка при обработке данных. Попробуйте снова.";
+        }
+    }
+
+    private async Task CombineAndSubmitSets()
+    {
+        // Обрабатываем ввод вручную перед объединением
+        await ValidateAndSubmitManualTMInput();
+
+        // Проверяем, если данные готовы
+        if (selectedTMValues.Any() && manualTMValues.Any())
+        {
+            // Объединяем наборы
+            var combinedSet = await MonitoringService.CombineMonitoringSetsAsync(selectedTMValues, manualTMValues);
+
+            // Обновляем интерфейс
+            await SetFilteredTMValues(combinedSet);
+
+            // Закрываем модальное окно
+            CloseManualMonitorModal();
+            await InvokeAsync(StateHasChanged);
         }
     }
 
