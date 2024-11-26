@@ -30,107 +30,124 @@ namespace перенос_бд_на_Web.Services
         }
 
         // Метод для выполнения действия
-        public async Task ExecuteAction(List<VerificationAction> actions, List<TMValues> tmValues)
+        public async Task ExecuteAction(
+            List<VerificationAction> actions,
+            List<TMValues> tmValues,
+            Action<int> progressCallback,
+            Action<bool> setStatusBarVisible
+            )
         {
-            // Создаём scope на уровне метода
-            using var scope = _scopeFactory.CreateScope();
-            var serviceProvider = scope.ServiceProvider;
-            var context = serviceProvider.GetRequiredService<ApplicationContext>();
-            var telemetryMonitoringService = serviceProvider.GetRequiredService<TelemetryMonitoringService>();
-            // Подключаем сервис для работы с TM
-            var corrDataService = serviceProvider.GetRequiredService<ExperimentCorrData>();
-
-            var progressCallback = new Action<int>(progress => Console.WriteLine($"Прогресс: {progress}%"));
-            var completionCallback = new Action<bool>(success => Console.WriteLine(success ? "Завершено успешно" : "Ошибка при выполнении"));
-
-            // Генерируем метку эксперимента один раз
-            var experimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
-            Console.WriteLine($"Метка эксперимента: {experimentLabel}");
-
-
-            // Получаем файлы в диапазоне для всех действий сразу
-            var startDate = actions.Min(a => a.StartDate);
-            var endDate = actions.Max(a => a.EndDate);
-            var filePathsInRange = await _sliceService.GetFilePathsInRangeAsync(startDate, endDate);
-            int orderIndex = 0;
-            bool allSlicesProcessed = true; // Флаг успешной обработки всех срезов
-
-            foreach (var path in filePathsInRange)
+            setStatusBarVisible(true); // Отображаем статус-бар
+            try
             {
-                try
+
+                // Создаём scope на уровне метода
+                using var scope = _scopeFactory.CreateScope();
+                var serviceProvider = scope.ServiceProvider;
+                var context = serviceProvider.GetRequiredService<ApplicationContext>();
+                var telemetryMonitoringService = serviceProvider.GetRequiredService<TelemetryMonitoringService>();
+                // Подключаем сервис для работы с TM
+                var corrDataService = serviceProvider.GetRequiredService<ExperimentCorrData>();
+
+                // Генерируем метку эксперимента один раз
+                var experimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
+
+                var filePathsInRange = await _sliceService.GetFilePathsInRangeAsync(
+                actions.Min(a => a.StartDate),
+                actions.Max(a => a.EndDate)
+                );
+
+                // Всего операций: обработка файлов + расчет корреляции
+                int totalOperations = filePathsInRange.Count + actions.GroupBy(a => new { a.TelemetryId, a.Id1 }).Count();
+                int completedOperations = 0;
+
+                int orderIndex = 0;
+
+                foreach (var path in filePathsInRange)
                 {
-                    _rastr.Load(RG_KOD.RG_REPL, path, "");
-                    bool hasChanges = false;
-
-                    // Группируем действия по комбинации TelemetryId и Id1
-                    foreach (var actionGroup in actions.GroupBy(a => new { a.TelemetryId, a.Id1 }))
+                    try
                     {
-                        var key = actionGroup.Key; // Получаем ключ (TelemetryId, Id1)
+                        _rastr.Load(RG_KOD.RG_REPL, path, "");
+                        bool hasChanges = await ProcessFile(path, orderIndex, tmValues,  actions, context, telemetryMonitoringService, experimentLabel);
 
-                        foreach (var action in actionGroup)
+                        if (hasChanges)
                         {
-                            switch (action.ActionName)
-                            {
-                                case "Изменить знак ТМ":
-                                    hasChanges |= await ChangeSign(actionGroup.ToList());
-                                    break;
-
-                                case "Создать дорасчет":
-                                    hasChanges |= await CreateRecalculation(actionGroup.ToList());
-                                    break;
-
-                                case "Исключить из ОС":
-                                    hasChanges |= await ExcludeFromOS(actionGroup.ToList());
-                                    break;
-
-                                default:
-                                    Console.WriteLine("Не выбрано действие для выполнения.");
-                                    break;
-                            }
+                            completedOperations++;
+                            int progress = (int)((double)completedOperations / totalOperations * 100);
+                            progressCallback(progress);
+                            orderIndex++;
                         }
                     }
-
-                    if (hasChanges)
+                    catch (Exception ex)
                     {
-                        orderIndex++;
-                        await SaveSlice(path, orderIndex, tmValues, context, telemetryMonitoringService, experimentLabel);
+                        Console.WriteLine($"Ошибка при обработке файла {path}: {ex.Message}");
                     }
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Ошибка при обработке файла {path}: {ex.Message}");
-                    allSlicesProcessed = false;
-                }
-            }
 
-            // Если все срезы обработаны успешно, запускаем расчет корреляции
-            if (allSlicesProcessed)
-            {
-                try
-                {
-                    Console.WriteLine("Все изменения внесены. Загрузка данных для расчета корреляции...");
-                    // Переопределение tmValues с данными из базы
-                    tmValues = await context.TMValues
-                        .Where(tm => tm.experiment_label == experimentLabel)
-                        .ToListAsync();
+                // Расчет корреляции
+                tmValues = await context.TMValues
+                    .Where(tm => tm.experiment_label == experimentLabel)
+                    .ToListAsync();
 
-                    Console.WriteLine("Все изменения внесены. Запуск расчета корреляции...");
-                    await corrDataService.CalculationCorrelationWithExperimentLabel(
+                await corrDataService.CalculationCorrelationWithExperimentLabel(
                     tmValues,
-                    experimentLabel, // latestExperimentLabel
-                    progressCallback,
-                    completionCallback,
+                    experimentLabel, 
+                    progress=>
+                    {
+                        completedOperations += progress; // Учитываем прогресс корреляции
+                        int overallProgress = (int)((double)completedOperations / totalOperations * 100);
+                        progressCallback(overallProgress);
+                    },
+                    setStatusBarVisible,
                     CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Ошибка при расчете корреляции: {ex.Message}");
-                }
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine("Не все срезы были успешно обработаны. Расчет корреляции не выполнен.");
+                Console.WriteLine($"Ошибка при расчете корреляции: {ex.Message}");
             }
+            finally
+            {
+                setStatusBarVisible(false); // Скрываем статус-бар после завершения
+            }
+        }
+
+        private async Task<bool> ProcessFile(
+        string path,
+        int orderIndex,
+        List<TMValues> tMValues,
+        List<VerificationAction> actions,
+        ApplicationContext context,
+        TelemetryMonitoringService telemetryMonitoringService,
+        string experimentLabel)
+        {
+            // Реализация обработки файла и возврат флага изменений
+            bool hasChanges = false;
+
+            foreach (var actionGroup in actions.GroupBy(a => new { a.TelemetryId, a.Id1 }))
+            {
+                foreach (var action in actionGroup)
+                {
+                    switch (action.ActionName)
+                    {
+                        case "Изменить знак ТМ":
+                            hasChanges |= await ChangeSign(actionGroup.ToList());
+                            break;
+                        case "Создать дорасчет":
+                            hasChanges |= await CreateRecalculation(actionGroup.ToList());
+                            break;
+                        case "Исключить из ОС":
+                            hasChanges |= await ExcludeFromOS(actionGroup.ToList());
+                            break;
+                    }
+                }
+            }
+
+            if (hasChanges)
+            {
+                await SaveSlice(path, orderIndex, tMValues, context, telemetryMonitoringService, experimentLabel);
+            }
+
+            return hasChanges;
         }
 
         private async Task SaveSlice(

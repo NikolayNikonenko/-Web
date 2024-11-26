@@ -422,7 +422,12 @@
             .ToList();
 
         // Выполнение действий через ActionService
-        await ActionService.ExecuteAction(actionsToExecute, tmValues);
+        await ActionService.ExecuteAction(
+            actionsToExecute, 
+            tmValues,
+            progress => Console.WriteLine($"Прогресс: {progress}%"),  // Progress callback
+            success => Console.WriteLine(success ? "Завершено успешно" : "Ошибка при выполнении")  // Completion callback
+        );
 
         // Очищаем выбранные действия и закрываем модальное окно
         //selectedActions.Clear();
@@ -620,15 +625,21 @@
     // Метод для обновления прогресса
     private void UpdateProgress(int progress)
     {
-        currentProgress = progress;
-        InvokeAsync(StateHasChanged);
+        InvokeAsync(() =>
+        {
+            currentProgress = progress;
+            StateHasChanged();
+        });
     }
 
     // Метод для управления видимостью статусбара
     private void SetStatusBarVisible(bool isVisible)
     {
-        isStatusBarVisible = isVisible;
-        InvokeAsync(StateHasChanged);
+        InvokeAsync(() =>
+        {
+            isStatusBarVisible = isVisible;
+            StateHasChanged();
+        });
     }
 
     private async Task OnStopCalculation()
