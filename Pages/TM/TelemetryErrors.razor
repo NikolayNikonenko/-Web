@@ -425,8 +425,8 @@
         await ActionService.ExecuteAction(
             actionsToExecute, 
             tmValues,
-            progress => Console.WriteLine($"Прогресс: {progress}%"),  // Progress callback
-            success => Console.WriteLine(success ? "Завершено успешно" : "Ошибка при выполнении")  // Completion callback
+            UpdateProgress,
+            SetStatusBarVisible
         );
 
         // Очищаем выбранные действия и закрываем модальное окно

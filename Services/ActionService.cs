@@ -40,7 +40,6 @@ namespace перенос_бд_на_Web.Services
             setStatusBarVisible(true); // Отображаем статус-бар
             try
             {
-
                 // Создаём scope на уровне метода
                 using var scope = _scopeFactory.CreateScope();
                 var serviceProvider = scope.ServiceProvider;
@@ -58,7 +57,7 @@ namespace перенос_бд_на_Web.Services
                 );
 
                 // Всего операций: обработка файлов + расчет корреляции
-                int totalOperations = filePathsInRange.Count + actions.GroupBy(a => new { a.TelemetryId, a.Id1 }).Count();
+                int totalOperations = filePathsInRange.Count; /*+ actions.GroupBy(a => new { a.TelemetryId, a.Id1 }).Count();*/
                 int completedOperations = 0;
 
                 int orderIndex = 0;
@@ -94,9 +93,9 @@ namespace перенос_бд_на_Web.Services
                     experimentLabel, 
                     progress=>
                     {
-                        completedOperations += progress; // Учитываем прогресс корреляции
-                        int overallProgress = (int)((double)completedOperations / totalOperations * 100);
-                        progressCallback(overallProgress);
+                        //completedOperations += progress; // Учитываем прогресс корреляции
+                        //int overallProgress = (int)((double)completedOperations / totalOperations * 100);
+                        //progressCallback(overallProgress);
                     },
                     setStatusBarVisible,
                     CancellationToken.None);
@@ -267,12 +266,12 @@ namespace перенос_бд_на_Web.Services
 
         // Метод для заполнения таблицы ModifiedTMValues
         private async Task SaveModifiedTMValues(
-    Guid idFileAfterModified,
-    string sliceName,
-    double orderIndex,
-    ApplicationContext context,
-    string nextExperimentLabel,
-    List<TMValues> tmValues)
+        Guid idFileAfterModified,
+        string sliceName,
+        double orderIndex,
+        ApplicationContext context,
+        string nextExperimentLabel,
+        List<TMValues> tmValues)
         {
             ITable tableTIChannel = (ITable)_rastr.Tables.Item("ti");
             ICol numCol = (ICol)tableTIChannel.Cols.Item("Num");
