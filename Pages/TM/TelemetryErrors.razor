@@ -656,6 +656,12 @@
             // Подтверждаем действия для текущего списка
             ConfirmActions(filteredTMValues);
 
+            // Получаем последнюю метку эксперимента
+            var latestExperimentLabel = await MonitoringService.GetNextExperimentLabelAsync();
+
+            // Инициализируем новый класс
+            var experimentCorrData = new ExperimentCorrData(_context);
+
             // Объединяем наборы из выпадающего списка и вручную введённые номера ТМ
             var selectedTMValues = filteredTMValues;
 
@@ -672,11 +678,6 @@
                     .ToList();
             }
 
-            // Выполняем расчёт корреляции для объединенного списка
-            if (selectedTMValues != null && selectedTMValues.Any())
-            {
-                await OnCalculateCorrelation(selectedTMValues);
-            }
         }
         finally
         {

@@ -6,6 +6,8 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using перенос_бд_на_Web.Models;
+using перенос_бд_на_Web.Pages.TM;
+using Microsoft.EntityFrameworkCore;
 using static System.Formats.Asn1.AsnWriter;
 
 namespace перенос_бд_на_Web.Services
@@ -35,6 +37,11 @@ namespace перенос_бд_на_Web.Services
             var serviceProvider = scope.ServiceProvider;
             var context = serviceProvider.GetRequiredService<ApplicationContext>();
             var telemetryMonitoringService = serviceProvider.GetRequiredService<TelemetryMonitoringService>();
+            // Подключаем сервис для работы с TM
+            var corrDataService = serviceProvider.GetRequiredService<ExperimentCorrData>();
+
+            var progressCallback = new Action<int>(progress => Console.WriteLine($"Прогресс: {progress}%"));
+            var completionCallback = new Action<bool>(success => Console.WriteLine(success ? "Завершено успешно" : "Ошибка при выполнении"));
 
             // Генерируем метку эксперимента один раз
             var experimentLabel = await telemetryMonitoringService.GetNextExperimentLabelAsync();
@@ -46,6 +53,7 @@ namespace перенос_бд_на_Web.Services
             var endDate = actions.Max(a => a.EndDate);
             var filePathsInRange = await _sliceService.GetFilePathsInRangeAsync(startDate, endDate);
             int orderIndex = 0;
+            bool allSlicesProcessed = true; // Флаг успешной обработки всех срезов
 
             foreach (var path in filePathsInRange)
             {
@@ -91,7 +99,37 @@ namespace перенос_бд_на_Web.Services
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Ошибка при обработке файла {path}: {ex.Message}");
+                    allSlicesProcessed = false;
                 }
+            }
+
+            // Если все срезы обработаны успешно, запускаем расчет корреляции
+            if (allSlicesProcessed)
+            {
+                try
+                {
+                    Console.WriteLine("Все изменения внесены. Загрузка данных для расчета корреляции...");
+                    // Переопределение tmValues с данными из базы
+                    tmValues = await context.TMValues
+                        .Where(tm => tm.experiment_label == experimentLabel)
+                        .ToListAsync();
+
+                    Console.WriteLine("Все изменения внесены. Запуск расчета корреляции...");
+                    await corrDataService.CalculationCorrelationWithExperimentLabel(
+                    tmValues,
+                    experimentLabel, // latestExperimentLabel
+                    progressCallback,
+                    completionCallback,
+                    CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Ошибка при расчете корреляции: {ex.Message}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("Не все срезы были успешно обработаны. Расчет корреляции не выполнен.");
             }
         }
 

@@ -9,7 +9,7 @@ using перенос_бд_на_Web.Models;
 
 public class CorrData
 {
-    private readonly ApplicationContext _correlation_Context;
+    public ApplicationContext _correlation_Context;
 
     public CorrData(ApplicationContext db)
     {
@@ -157,7 +157,7 @@ public class CorrData
         setStatusBarVisible(false); // Скрываем статусбар после завершения
     }
 
-    string DetermineStatus(double correlation)
+    public string DetermineStatus(double correlation)
     {
         if (correlation >= -1 && correlation < -0.5) return "Недостоверная";
         if (correlation >= -0.5 && correlation < 0.5) return "Сомнительная";
