@@ -73,6 +73,11 @@
     private List<int> manualTMInputNumbers = new List<int>();
 
 
+    private string selectedExperiment; // Выбранный эксперимент
+    private List<string> availableExperiments = new List<string>(); // Список экспериментов
+
+
+
 
     protected override async Task OnInitializedAsync()
     {
@@ -84,8 +89,22 @@
     {
         try
         {
+            // Загружаем все данные из таблицы
             tm = await _context.tm.AsNoTracking().ToListAsync();
-            filteredTm = tm;
+
+            // Фильтруем данные с меткой "Входные данные" для исходной таблицы
+            filteredTm = tm.Where(t => t.experiment_label == "Входные данные").ToList();
+
+            // Собираем список уникальных экспериментов (только метки, начинающиеся с "Эксперимент")
+            availableExperiments = tm
+                .Where(t => t.experiment_label.StartsWith("Эксперимент"))
+                .Select(t => t.experiment_label)
+                .Distinct()
+                .OrderBy(label => label)
+                .ToList();
+
+            // Показываем выпадающий список только если есть эксперименты
+            IsDropdownVisible = availableExperiments.Any();
         }
         catch (Exception ex)
         {
@@ -170,6 +189,86 @@
             _ => "Значения"
         };
     }
+
+    private void FilterByExperiment(ChangeEventArgs e)
+    {
+        selectedExperiment = e.Value?.ToString();
+
+        if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
+        {
+            // Получаем входные данные и экспериментальные данные
+            var inputData = tm.Where(t => t.experiment_label == "Входные данные").ToList();
+            var experimentData = tm.Where(t => t.experiment_label == selectedExperiment).ToList();
+
+            // Объединяем входные данные и экспериментальные
+            filteredTm = inputData
+            .Where(input => experimentData.Any(experiment => experiment.IndexTm == input.IndexTm))
+            .Select(input =>
+            {
+                var experiment = experimentData.First(experiment => experiment.IndexTm == input.IndexTm);
+
+                // Создаем новый объект NedostovernayaTM с объединенными данными
+                return new NedostovernayaTM
+                    {
+                        ID = input.ID,
+                        IndexTm = input.IndexTm,
+                        CorrTm = experiment.CorrTm, // Используем данные эксперимента
+                        Status = experiment.Status,
+                        MaxLagranj = experiment.MaxLagranj,
+                        AvgLagranj = experiment.AvgLagranj,
+                        recomendedActions = input.recomendedActions,
+                        Id1 = input.Id1,
+                        experiment_label = input.experiment_label // или experiment.experiment_label, в зависимости от нужного значения
+                    };
+            }).ToList();
+        }
+        else
+        {
+            // Отображаем только входные данные
+            filteredTm = tm.Where(t => t.experiment_label == "Входные данные").ToList();
+        }
+    }
+
+    public string GetExperimentValue(double indexTm, string experimentLabel, string fieldName)
+    {
+    // Запрос к БД для получения данных эксперимента
+    var experimentData = _context.tm
+        .FirstOrDefault(t => t.IndexTm == indexTm && t.experiment_label == experimentLabel);
+
+    if (experimentData != null)
+    {
+        return fieldName switch
+        {
+            "CorrTm" => experimentData.CorrTm.ToString("F2"),
+            "Status" => experimentData.Status,
+            "MaxLagranj" => experimentData.MaxLagranj.ToString("F2"),
+            "AvgLagranj" => experimentData.AvgLagranj.ToString("F2"),
+            _ => "-"
+        };
+    }
+
+    // Запрос к БД для получения "Входных данных"
+    var baselineData = _context.tm
+        .FirstOrDefault(t => t.IndexTm == indexTm && t.experiment_label == "Входные данные");
+
+    if (baselineData != null)
+    {
+        return fieldName switch
+        {
+            "CorrTm" => baselineData.CorrTm.ToString("F2"),
+            "Status" => baselineData.Status,
+            "MaxLagranj" => baselineData.MaxLagranj.ToString("F2"),
+            "AvgLagranj" => baselineData.AvgLagranj.ToString("F2"),
+            _ => "-"
+        };
+    }
+
+    // Лог для диагностики
+    Console.WriteLine($"Не найдены входные данные для IndexTm = {indexTm}");
+    
+    // Если данные "Входные данные" и эксперимента отсутствуют
+    return "-";
+}
 
 
     private async Task GenerateChart()
@@ -978,6 +1077,20 @@
 
 }
 
+@if (IsDropdownVisible)
+{
+    <div class="form-group">
+        <label for="experimentSelect">Выберите эксперимент:</label>
+        <select id="experimentSelect" class="form-select" @onchange="FilterByExperiment">
+            <option value="" selected>Входные данные</option>
+            @foreach (var experiment in availableExperiments)
+            {
+                <option value="@experiment">@experiment</option>
+            }
+        </select>
+    </div>
+}
+
 
 @if (filteredTm == null || !filteredTm.Any())
 {
@@ -1017,6 +1130,14 @@ else
                 <th @onclick="() => SortData(nameof(NedostovernayaTM.recomendedActions))">
                     Действия по достоверизации @(currentSortColumn == nameof(NedostovernayaTM.recomendedActions) ? (isAscending ? "▲" : "▼") : "")
                 </th>
+                <!-- Добавляем новые столбцы для выбранного эксперимента -->
+                @if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
+                {
+                    <th>Коэффициент корреляции (@selectedExperiment)</th>
+                    <th>Статус (@selectedExperiment)</th>
+                    <th>Максимальное значение лагранжиана (@selectedExperiment)</th>
+                    <th>Среднее значение лагранжиана (@selectedExperiment)</th>
+                }
             </tr>
         </thead>
         <tbody>
@@ -1030,6 +1151,7 @@ else
                     <td>@telemetry.Status</td>
                     <td>@telemetry.MaxLagranj</td>
                     <td>@telemetry.AvgLagranj</td>
+
                     <td>
                         <select class="form-select"
                                 value="@GetSelectedAction((int)telemetry.IndexTm, telemetry.Id1)"
@@ -1040,6 +1162,14 @@ else
                             <option value="Исключить из ОС">Исключить из ОС</option>
                         </select>
                     </td>
+                    <!-- Добавляем значения для каждого эксперимента -->
+                    @if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
+                    {
+                        <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "CorrTm")</td>
+                        <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status")</td>
+                        <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "MaxLagranj")</td>
+                        <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "AvgLagranj")</td>
+                    }
                 </tr>
             }
         </tbody>
