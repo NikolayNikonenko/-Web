@@ -241,10 +241,10 @@
 
             return fieldName switch
             {
-                "CorrTm" => experimentData.CorrTm.ToString("F2"),
+                "CorrTm" => experimentData.CorrTm.ToString("F4"),
                 "Status" => experimentData.Status,
-                "MaxLagranj" => experimentData.MaxLagranj.ToString("F2"),
-                "AvgLagranj" => experimentData.AvgLagranj.ToString("F2"),
+                "MaxLagranj" => experimentData.MaxLagranj.ToString("F4"),
+                "AvgLagranj" => experimentData.AvgLagranj.ToString("F4"),
                 "ID" => experimentData.ID.ToString(), // ID
                 "IndexTm" => experimentData.IndexTm.ToString(), // IndexTm
                 "Id1" => experimentData.Id1.ToString(), // Id1
@@ -263,10 +263,10 @@
 
                 return fieldName switch
                 {
-                    "CorrTm" => baselineData.CorrTm.ToString("F2"),
+                    "CorrTm" => baselineData.CorrTm.ToString("F4"),
                     "Status" => baselineData.Status,
-                    "MaxLagranj" => baselineData.MaxLagranj.ToString("F2"),
-                    "AvgLagranj" => baselineData.AvgLagranj.ToString("F2"),
+                    "MaxLagranj" => baselineData.MaxLagranj.ToString("F4"),
+                    "AvgLagranj" => baselineData.AvgLagranj.ToString("F4"),
                     "ID" => baselineData.ID.ToString(), // ID
                     "IndexTm" => baselineData.IndexTm.ToString(), // IndexTm
                     "Id1" => baselineData.Id1.ToString(), // Id1
@@ -1109,6 +1109,15 @@ else
 {
     <table class="table table-bordered">
         <thead>
+            <!-- Первый уровень заголовков -->
+            <tr>
+                <th colspan="8" class="text-center">Входные данные</th>
+                @if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
+                {
+                    <th colspan="4" class="text-center">Значения экспериментов</th>
+                }
+            </tr>
+            <!-- Второй уровень заголовков -->
             <tr>
                 <th @onclick="() => SortData(nameof(NedostovernayaTM.ID))">
                     Идентификатор @(currentSortColumn == nameof(NedostovernayaTM.ID) ? (isAscending ? "▲" : "▼") : "")
@@ -1139,13 +1148,12 @@ else
                 <th @onclick="() => SortData(nameof(NedostovernayaTM.recomendedActions))">
                     Действия по достоверизации @(currentSortColumn == nameof(NedostovernayaTM.recomendedActions) ? (isAscending ? "▲" : "▼") : "")
                 </th>
-                <!-- Добавляем новые столбцы для выбранного эксперимента -->
                 @if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
                 {
-                    <th>Коэффициент корреляции (@selectedExperiment)</th>
-                    <th>Статус (@selectedExperiment)</th>
-                    <th>Максимальное значение лагранжиана (@selectedExperiment)</th>
-                    <th>Среднее значение лагранжиана (@selectedExperiment)</th>
+                    <th>Коэффициент корреляции</th>
+                    <th>Статус</th>
+                    <th>Максимальное значение лагранжиана</th>
+                    <th>Среднее значение лагранжиана</th>
                 }
             </tr>
         </thead>
@@ -1160,10 +1168,10 @@ else
                         <td>@telemetry.ID</td>
                         <td>@telemetry.IndexTm</td>
                         <td>@telemetry.Id1</td>
-                        <td>@telemetry.CorrTm</td>
+                        <td>@Math.Round(telemetry.CorrTm,4)</td>
                         <td>@telemetry.Status</td>
-                        <td>@telemetry.MaxLagranj</td>
-                        <td>@telemetry.AvgLagranj</td>
+                        <td>@Math.Round(telemetry.MaxLagranj,4)</td>
+                        <td>@Math.Round(telemetry.AvgLagranj,4)</td>
                     }
                     else
                     {
