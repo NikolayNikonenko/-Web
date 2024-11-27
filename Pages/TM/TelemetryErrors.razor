@@ -231,7 +231,36 @@
 
     public string GetExperimentValue(double indexTm, string experimentLabel, string fieldName)
     {
-        // Ищем данные для выбранного эксперимента
+        if (experimentLabel == "Входные данные")
+        {
+            // Обработка только для метки "Входные данные"
+            var baselineData = _context.tm
+                .FirstOrDefault(t => t.IndexTm == indexTm && t.experiment_label == "Входные данные");
+
+            if (baselineData != null)
+            {
+                Console.WriteLine($"Данные для 'Входные данные' с IndexTm {indexTm} найдены.");
+
+                return fieldName switch
+                {
+                    "CorrTm" => baselineData.CorrTm.ToString("F4"),
+                    "Status" => baselineData.Status,
+                    "MaxLagranj" => baselineData.MaxLagranj.ToString("F4"),
+                    "AvgLagranj" => baselineData.AvgLagranj.ToString("F4"),
+                    "ID" => baselineData.ID.ToString(),
+                    "IndexTm" => baselineData.IndexTm.ToString(),
+                    "Id1" => baselineData.Id1.ToString(),
+                    _ => "-"
+                };
+            }
+            else
+            {
+                Console.WriteLine($"Не удалось найти данные для 'Входные данные' с IndexTm {indexTm}.");
+                return "-";
+            }
+        }
+
+        // Обработка для экспериментов
         var experimentData = _context.tm
             .FirstOrDefault(t => t.IndexTm == indexTm && t.experiment_label == experimentLabel);
 
@@ -245,38 +274,15 @@
                 "Status" => experimentData.Status,
                 "MaxLagranj" => experimentData.MaxLagranj.ToString("F4"),
                 "AvgLagranj" => experimentData.AvgLagranj.ToString("F4"),
-                "ID" => experimentData.ID.ToString(), // ID
-                "IndexTm" => experimentData.IndexTm.ToString(), // IndexTm
-                "Id1" => experimentData.Id1.ToString(), // Id1
-                _ => "-" // для других полей возвращаем "-"
+                "ID" => experimentData.ID.ToString(),
+                "IndexTm" => experimentData.IndexTm.ToString(),
+                "Id1" => experimentData.Id1.ToString(),
+                _ => "-"
             };
         }
-        else
-        {
-            // Если данных для эксперимента нет, проверяем данные для "Входные данные"
-            var baselineData = _context.tm
-                .FirstOrDefault(t => t.IndexTm == indexTm && t.experiment_label == "Входные данные");
 
-            if (baselineData != null)
-            {
-                Console.WriteLine($"Данные для входных данных с IndexTm {indexTm} найдены.");
-
-                return fieldName switch
-                {
-                    "CorrTm" => baselineData.CorrTm.ToString("F4"),
-                    "Status" => baselineData.Status,
-                    "MaxLagranj" => baselineData.MaxLagranj.ToString("F4"),
-                    "AvgLagranj" => baselineData.AvgLagranj.ToString("F4"),
-                    "ID" => baselineData.ID.ToString(), // ID
-                    "IndexTm" => baselineData.IndexTm.ToString(), // IndexTm
-                    "Id1" => baselineData.Id1.ToString(), // Id1
-                    _ => "-" // для других полей
-                };
-            }
-        }
-
-        Console.WriteLine($"Не удалось найти данные для IndexTm {indexTm}.");
-        return "-"; // Если данных нет
+        Console.WriteLine($"Не удалось найти данные для эксперимента {experimentLabel} с IndexTm {indexTm}.");
+        return "-";
     }
 
 
@@ -1161,7 +1167,7 @@ else
             @foreach (var telemetry in filteredTm)
             {
                 <tr class="@GetRowClass(telemetry.Status)">
-
+                    <!-- Если выбран "Входные данные" -->
                     @if (string.IsNullOrEmpty(selectedExperiment) || selectedExperiment == "Входные данные")
                     {
                         <!-- Входные данные -->
@@ -1185,6 +1191,7 @@ else
                         <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "AvgLagranj")</td>
                     }
 
+                    <!-- Выбор действия -->
                     <td>
                         <select class="form-select"
                                 value="@GetSelectedAction((int)telemetry.IndexTm, telemetry.Id1)"
@@ -1195,7 +1202,7 @@ else
                             <option value="Исключить из ОС">Исключить из ОС</option>
                         </select>
                     </td>
-                    <!-- Добавляем значения для каждого эксперимента -->
+                    <!-- Данные для выбранного эксперимента -->
                     @if (!string.IsNullOrEmpty(selectedExperiment)  && selectedExperiment != "Входные данные")
                     {
                      
