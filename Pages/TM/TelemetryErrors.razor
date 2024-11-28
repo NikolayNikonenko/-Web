@@ -16,16 +16,30 @@
 <PageTitle>Выявленные недостоверности ТМ</PageTitle>
 
 <style>
-    .status-dostovernaya {
-        background-color: lightgreen;
+    /* Входные данные */
+    .input-status-dostovernaya {
+        background-color: lightgreen !important;
     }
 
-    .status-somnitelnaya {
-        background-color: lightyellow;
+    .input-status-somnitelnaya {
+        background-color: lightyellow !important;
     }
 
-    .status-nedostovernaya {
-        background-color: lightcoral;
+    .input-status-nedostovernaya {
+        background-color: lightcoral !important;
+    }
+
+    /* Эксперименты */
+    .experiment-status-dostovernaya {
+        background-color: lightgreen !important;
+    }
+
+    .experiment-status-somnitelnaya {
+        background-color: lightyellow !important;
+    }
+
+    .experiment-status-nedostovernaya {
+        background-color: lightcoral !important;
     }
 </style>
 
@@ -250,6 +264,7 @@
                     "ID" => baselineData.ID.ToString(),
                     "IndexTm" => baselineData.IndexTm.ToString(),
                     "Id1" => baselineData.Id1.ToString(),
+                    "recomendedActions" => baselineData.recomendedActions.ToString(),
                     _ => "-"
                 };
             }
@@ -277,6 +292,7 @@
                 "ID" => experimentData.ID.ToString(),
                 "IndexTm" => experimentData.IndexTm.ToString(),
                 "Id1" => experimentData.Id1.ToString(),
+                "recomendedActions" => experimentData.recomendedActions.ToString(),
                 _ => "-"
             };
         }
@@ -402,15 +418,30 @@
         }
     }
 
-    private string GetRowClass(string status)
+    private string GetCellClass(string status, string dataType)
     {
-        return status switch
+        Console.WriteLine($"Status: {status}, DataType: {dataType}");
+        if (dataType == "Входные данные")
         {
-            "Достоверная" => "status-dostovernaya",
-            "Сомнительная" => "status-somnitelnaya",
-            "Недостоверная" => "status-nedostovernaya",
-            _ => string.Empty
-        };
+            return status switch
+            {
+                "Достоверная" => "input-status-dostovernaya",
+                "Сомнительная" => "input-status-somnitelnaya",
+                "Недостоверная" => "input-status-nedostovernaya",
+                _ => string.Empty
+            };
+        }
+        else if (dataType == "Эксперимент")
+        {
+            return status switch
+            {
+                "Достоверная" => "experiment-status-dostovernaya",
+                "Сомнительная" => "experiment-status-somnitelnaya",
+                "Недостоверная" => "experiment-status-nedostovernaya",
+                _ => string.Empty
+            };
+        }
+        return string.Empty;
     }
     private async Task ApplyTimeIntervalFilter(bool isThinning = false)
     {
@@ -1166,33 +1197,41 @@ else
         <tbody>
             @foreach (var telemetry in filteredTm)
             {
-                <tr class="@GetRowClass(telemetry.Status)">
+                <tr>
                     <!-- Если выбран "Входные данные" -->
                     @if (string.IsNullOrEmpty(selectedExperiment) || selectedExperiment == "Входные данные")
                     {
                         <!-- Входные данные -->
-                        <td>@telemetry.ID</td>
-                        <td>@telemetry.IndexTm</td>
-                        <td>@telemetry.Id1</td>
-                        <td>@Math.Round(telemetry.CorrTm,4)</td>
-                        <td>@telemetry.Status</td>
-                        <td>@Math.Round(telemetry.MaxLagranj,4)</td>
-                        <td>@Math.Round(telemetry.AvgLagranj,4)</td>
+                        <td class="@GetCellClass(telemetry.Status, "Входные данные")">@telemetry.ID</td>
+                        <td class="@GetCellClass(telemetry.Status, "Входные данные")">@telemetry.IndexTm</td>
+                        <td class="@GetCellClass(telemetry.Status, "Входные данные")">@telemetry.Id1</td>
+                        <td class="@GetCellClass(telemetry.Status, "Входные данные")">@Math.Round(telemetry.CorrTm, 4)</td>
+                        <td class="@GetCellClass(telemetry.Status, "Входные данные")">@telemetry.Status</td>
+                        <td class="@GetCellClass(telemetry.Status, "Входные данные")">@Math.Round(telemetry.MaxLagranj, 4)</td>
+                        <td class="@GetCellClass(telemetry.Status, "Входные данные")">@Math.Round(telemetry.AvgLagranj, 4)</td>
                     }
                     else
                     {
                         <!-- Данные для выбранного эксперимента -->
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "ID")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "IndexTm")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "Id1")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "CorrTm")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "Status")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "MaxLagranj")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "AvgLagranj")</td>
+                        var status = GetExperimentValue(telemetry.IndexTm, "Входные данные", "Status");
+                        var id = GetExperimentValue(telemetry.IndexTm, "Входные данные", "ID");
+                        var indexTm = GetExperimentValue(telemetry.IndexTm, "Входные данные", "IndexTm");
+                        var id1 = GetExperimentValue(telemetry.IndexTm, "Входные данные", "Id1");
+                        var corrTm = GetExperimentValue(telemetry.IndexTm, "Входные данные", "CorrTm");
+                        var maxLagranj = GetExperimentValue(telemetry.IndexTm, "Входные данные", "MaxLagranj");
+                        var avgLagranj = GetExperimentValue(telemetry.IndexTm, "Входные данные", "AvgLagranj");
+
+                        <td class="@GetCellClass(status, "Входные данные")">@id</td>
+                        <td class="@GetCellClass(status, "Входные данные")">@indexTm</td>
+                        <td class="@GetCellClass(status, "Входные данные")">@id1</td>
+                        <td class="@GetCellClass(status, "Входные данные")">@corrTm</td>
+                        <td class="@GetCellClass(status, "Входные данные")">@status</td>
+                        <td class="@GetCellClass(status, "Входные данные")">@maxLagranj</td>
+                        <td class="@GetCellClass(status, "Входные данные")">@avgLagranj</td>
                     }
 
                     <!-- Выбор действия -->
-                    <td>
+                    <td class="@GetCellClass(telemetry.Status, "Входные данные")">
                         <select class="form-select"
                                 value="@GetSelectedAction((int)telemetry.IndexTm, telemetry.Id1)"
                                 @onchange="(e) => SelectAction(telemetry, e.Value.ToString())">
@@ -1205,11 +1244,19 @@ else
                     <!-- Данные для выбранного эксперимента -->
                     @if (!string.IsNullOrEmpty(selectedExperiment)  && selectedExperiment != "Входные данные")
                     {
-                     
-                        <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "CorrTm")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "MaxLagranj")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "AvgLagranj")</td>
+
+                        <td class="@GetCellClass(GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status"), "Эксперимент")">
+                            @GetExperimentValue(telemetry.IndexTm, selectedExperiment, "CorrTm")
+                        </td>
+                        <td class="@GetCellClass(GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status"), "Эксперимент")">
+                            @GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status")
+                        </td>
+                        <td class="@GetCellClass(GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status"), "Эксперимент")">
+                            @GetExperimentValue(telemetry.IndexTm, selectedExperiment, "MaxLagranj")
+                        </td>
+                        <td class="@GetCellClass(GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status"), "Эксперимент")">
+                            @GetExperimentValue(telemetry.IndexTm, selectedExperiment, "AvgLagranj")
+                        </td>
                     }
                 </tr>
             }
