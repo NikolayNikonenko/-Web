@@ -90,6 +90,8 @@
     private string selectedExperiment; // Выбранный эксперимент
     private List<string> availableExperiments = new List<string>(); // Список экспериментов
 
+    private Dictionary<double, NedostovernayaTM> _experimentDataCache = new();
+
 
 
 
@@ -103,13 +105,26 @@
     {
         try
         {
-            // Загружаем все данные из таблицы
-            tm = await _context.tm.AsNoTracking().ToListAsync();
+            // Загружаем метки "Входные данные" и экспериментов из базы данных
+            tm = await _context.tm
+                .AsNoTracking()
+                .Where(t => t.experiment_label == "Входные данные"
+                          || t.experiment_label.StartsWith("Эксперимент"))
+                .ToListAsync();
 
-            // Фильтруем данные с меткой "Входные данные" для исходной таблицы
+            // Выводим данные
+            Console.WriteLine($"Загружено {tm.Count} записей.");
+
+            // Если данных нет, выводим ошибку
+            if (tm.Count == 0)
+            {
+                Console.WriteLine("Нет данных в базе для фильтрации.");
+            }
+
+            // Фильтруем входные данные для отображения по умолчанию
             filteredTm = tm.Where(t => t.experiment_label == "Входные данные").ToList();
 
-            // Собираем список уникальных экспериментов (только метки, начинающиеся с "Эксперимент")
+            // Собираем список уникальных экспериментов
             availableExperiments = tm
                 .Where(t => t.experiment_label.StartsWith("Эксперимент"))
                 .Select(t => t.experiment_label)
@@ -119,6 +134,7 @@
 
             // Показываем выпадающий список только если есть эксперименты
             IsDropdownVisible = availableExperiments.Any();
+            StateHasChanged(); // Обновление UI
         }
         catch (Exception ex)
         {
@@ -126,7 +142,9 @@
         }
     }
 
-    private void SortData(string column)
+
+
+    private async Task SortDataAsync(string column)
     {
         if (currentSortColumn == column)
         {
@@ -149,6 +167,8 @@
             nameof(NedostovernayaTM.AvgLagranj) => isAscending ? filteredTm.OrderBy(t => t.AvgLagranj).ToList() : filteredTm.OrderByDescending(t => t.AvgLagranj).ToList(),
             _ => filteredTm
         };
+        // Обновляем интерфейс
+        await InvokeAsync(StateHasChanged);
     }
 
     private void SearchData()
@@ -161,7 +181,7 @@
         {
             filteredTm = tm.Where(t => t.IndexTm.ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
         }
-        SortData(currentSortColumn);
+        SortDataAsync(currentSortColumn);
     }
 
     private void ToggleSearch()
@@ -178,7 +198,7 @@
     {
         searchTerm = string.Empty;
         filteredTm = tm;
-        SortData(currentSortColumn);
+        SortDataAsync(currentSortColumn);
     }
 
     private void ShowChartInput()
@@ -204,34 +224,42 @@
         };
     }
 
-    private void FilterByExperiment(ChangeEventArgs e)
+    private async Task FilterByExperimentAsync(ChangeEventArgs e)
     {
         selectedExperiment = e.Value?.ToString();
 
+        // Выводим количество данных в tm перед фильтрацией
+        Console.WriteLine($"Количество данных в tm: {tm.Count()}");
+
         if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
         {
-            // Получаем входные данные и экспериментальные данные
+            // Получаем входные и экспериментальные данные
             var inputData = tm.Where(t => t.experiment_label == "Входные данные").ToList();
-            var experimentData = tm.Where(t => t.experiment_label == selectedExperiment).ToList();
+            var experimentData = tm.Where(t => t.experiment_label == selectedExperiment).ToDictionary(t => t.IndexTm);
 
             // Выводим количество записей для входных данных и экспериментальных данных
             Console.WriteLine($"Входных данных: {inputData.Count}, Экспериментальных данных: {experimentData.Count}");
 
             // Объединяем входные данные и экспериментальные
             filteredTm = inputData
-                .Where(input => experimentData.Any(experiment => experiment.IndexTm == input.IndexTm))
-                .Select(input =>
-                {
-                    var experiment = experimentData.First(experiment => experiment.IndexTm == input.IndexTm);
+    .Where(input => experimentData.ContainsKey(input.IndexTm))
+    .Select(input =>
+    {
+        var experiment = experimentData[input.IndexTm];
 
-                    // Обновляем для эксперимента
-                    input.CorrTm = experiment.CorrTm;
-                    input.Status = experiment.Status;
-                    input.MaxLagranj = experiment.MaxLagranj;
-                    input.AvgLagranj = experiment.AvgLagranj;
-
-                    return input;
-                }).ToList();
+        // Создаем новый объект для таблицы `tm` вместо изменения существующего
+        return new NedostovernayaTM
+            {
+                ID = input.ID, // Сохраняем оригинальный ID, если он важен
+                IndexTm = input.IndexTm,
+                experiment_label = input.experiment_label,
+                CorrTm = experiment.CorrTm,
+                Status = experiment.Status,
+                MaxLagranj = experiment.MaxLagranj,
+                AvgLagranj = experiment.AvgLagranj,
+                // Добавляем другие свойства, если они есть
+            };
+    }).ToList();
 
             // Выводим отфильтрованные данные
             Console.WriteLine($"Отфильтрованных данных: {filteredTm.Count}");
@@ -241,63 +269,37 @@
             // Отображаем только входные данные
             filteredTm = tm.Where(t => t.experiment_label == "Входные данные").ToList();
         }
+        await InvokeAsync(StateHasChanged);
     }
 
-    public string GetExperimentValue(double indexTm, string experimentLabel, string fieldName)
+    public async Task<string> GetExperimentValueAsync(double indexTm, string experimentLabel, string fieldName)
     {
-        if (experimentLabel == "Входные данные")
+        // Метод для поиска данных асинхронно
+        var data = await _context.tm
+            .Where(t => t.IndexTm == indexTm &&
+                       (t.experiment_label == experimentLabel || t.experiment_label == "Входные данные"))
+            .OrderBy(t => t.experiment_label == "Входные данные") // Сначала ищем эксперимент, потом "Входные данные"
+            .FirstOrDefaultAsync(); // Асинхронное получение первого элемента
+
+        if (data != null)
         {
-            // Обработка только для метки "Входные данные"
-            var baselineData = _context.tm
-                .FirstOrDefault(t => t.IndexTm == indexTm && t.experiment_label == "Входные данные");
+            Console.WriteLine($"Данные для IndexTm {indexTm} найдены: {data.experiment_label}.");
 
-            if (baselineData != null)
-            {
-                Console.WriteLine($"Данные для 'Входные данные' с IndexTm {indexTm} найдены.");
-
-                return fieldName switch
-                {
-                    "CorrTm" => baselineData.CorrTm.ToString("F4"),
-                    "Status" => baselineData.Status,
-                    "MaxLagranj" => baselineData.MaxLagranj.ToString("F4"),
-                    "AvgLagranj" => baselineData.AvgLagranj.ToString("F4"),
-                    "ID" => baselineData.ID.ToString(),
-                    "IndexTm" => baselineData.IndexTm.ToString(),
-                    "Id1" => baselineData.Id1.ToString(),
-                    "recomendedActions" => baselineData.recomendedActions.ToString(),
-                    _ => "-"
-                };
-            }
-            else
-            {
-                Console.WriteLine($"Не удалось найти данные для 'Входные данные' с IndexTm {indexTm}.");
-                return "-";
-            }
-        }
-
-        // Обработка для экспериментов
-        var experimentData = _context.tm
-            .FirstOrDefault(t => t.IndexTm == indexTm && t.experiment_label == experimentLabel);
-
-        if (experimentData != null)
-        {
-            Console.WriteLine($"Данные для эксперимента {experimentLabel} с IndexTm {indexTm} найдены.");
-
+            // Выбор значения по имени поля
             return fieldName switch
             {
-                "CorrTm" => experimentData.CorrTm.ToString("F4"),
-                "Status" => experimentData.Status,
-                "MaxLagranj" => experimentData.MaxLagranj.ToString("F4"),
-                "AvgLagranj" => experimentData.AvgLagranj.ToString("F4"),
-                "ID" => experimentData.ID.ToString(),
-                "IndexTm" => experimentData.IndexTm.ToString(),
-                "Id1" => experimentData.Id1.ToString(),
-                "recomendedActions" => experimentData.recomendedActions.ToString(),
-                _ => "-"
+                "CorrTm" => data.CorrTm.ToString("F4"),
+                "Status" => data.Status,
+                "MaxLagranj" => data.MaxLagranj.ToString("F4"),
+                "AvgLagranj" => data.AvgLagranj.ToString("F4"),
+                "ID" => data.ID.ToString(),
+                "IndexTm" => data.IndexTm.ToString(),
+                "Id1" => data.Id1.ToString(),
+                _ => "-" // Если поле неизвестно
             };
         }
 
-        Console.WriteLine($"Не удалось найти данные для эксперимента {experimentLabel} с IndexTm {indexTm}.");
+        Console.WriteLine($"Не удалось найти данные для IndexTm {indexTm}.");
         return "-";
     }
 
@@ -377,7 +379,7 @@
                 return;
             }
 
-            // Шаг 4: Извлечение дополнительных данных (если необходимо)
+            // // Шаг 4: Извлечение дополнительных данных (если необходимо)
             var DataInTm = await _context.tm
                 .Where(tm => tm.IndexTm == tmIndex)
                 .ToListAsync();
@@ -397,13 +399,6 @@
             // Шаг 5: Вызов JavaScript для генерации графика
             try
             {
-                Console.WriteLine($"Прореженные данные для графика: {chartData.Count}");
-                foreach (var item in chartData)
-                {
-                    Console.WriteLine($"IndexTM: {item.IndexTM}, Время среза: {item.NumberOfSrez}, Id1: {item.Id1}");
-                }
-
-
                 await JS.InvokeVoidAsync("generateChart", chartElement, chartData, DataInTm, chartTitle, yAxisLabel);
             }
             catch (Exception ex)
@@ -1127,7 +1122,7 @@
 {
     <div class="form-group">
         <label for="experimentSelect">Выберите эксперимент:</label>
-        <select id="experimentSelect" class="form-select" @onchange="FilterByExperiment">
+        <select id="experimentSelect" class="form-select" @onchange="FilterByExperimentAsync">
             <option value="" selected>Входные данные</option>
             @foreach (var experiment in availableExperiments)
             {
@@ -1156,33 +1151,33 @@ else
             </tr>
             <!-- Второй уровень заголовков -->
             <tr>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.ID))">
+                <th @onclick="() => SortDataAsync(nameof(NedostovernayaTM.ID))">
                     Идентификатор @(currentSortColumn == nameof(NedostovernayaTM.ID) ? (isAscending ? "▲" : "▼") : "")
                 </th>
                 <th>
-                    <span @onclick="() => SortData(nameof(NedostovernayaTM.IndexTm))" style="cursor:pointer;">
+                    <span @onclick="() => SortDataAsync(nameof(NedostovernayaTM.IndexTm))" style="cursor:pointer;">
                         Индекс ТМ @(currentSortColumn == nameof(NedostovernayaTM.IndexTm) ? (isAscending ? "▲" : "▼") : "")
                     </span>
                     <button @onclick="ToggleSearch" class="btn btn-link" style="padding:0; margin-left:5px;">
                         🔍
                     </button>
                 </th>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.CorrTm))">
+                <th @onclick="() => SortDataAsync(nameof(NedostovernayaTM.CorrTm))">
                     Узел @(currentSortColumn == nameof(NedostovernayaTM.Id1) ? (isAscending ? "▲" : "▼") : "")
                 </th>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.CorrTm))">
+                <th @onclick="() => SortDataAsync(nameof(NedostovernayaTM.CorrTm))">
                     Коэффициент корреляции @(currentSortColumn == nameof(NedostovernayaTM.CorrTm) ? (isAscending ? "▲" : "▼") : "")
                 </th>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.Status))">
+                <th @onclick="() => SortDataAsync(nameof(NedostovernayaTM.Status))">
                     Статус @(currentSortColumn == nameof(NedostovernayaTM.Status) ? (isAscending ? "▲" : "▼") : "")
                 </th>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.MaxLagranj))">
+                <th @onclick="() => SortDataAsync(nameof(NedostovernayaTM.MaxLagranj))">
                     Максимальное значение лагранжиана @(currentSortColumn == nameof(NedostovernayaTM.MaxLagranj) ? (isAscending ? "▲" : "▼") : "")
                 </th>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.AvgLagranj))">
+                <th @onclick="() => SortDataAsync(nameof(NedostovernayaTM.AvgLagranj))">
                     Среднее значение лагранжиана @(currentSortColumn == nameof(NedostovernayaTM.AvgLagranj) ? (isAscending ? "▲" : "▼") : "")
                 </th>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.recomendedActions))">
+                <th @onclick="() => SortDataAsync(nameof(NedostovernayaTM.recomendedActions))">
                     Действия по достоверизации @(currentSortColumn == nameof(NedostovernayaTM.recomendedActions) ? (isAscending ? "▲" : "▼") : "")
                 </th>
                 @if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
@@ -1213,21 +1208,13 @@ else
                     else
                     {
                         <!-- Данные для выбранного эксперимента -->
-                        var status = GetExperimentValue(telemetry.IndexTm, "Входные данные", "Status");
-                        var id = GetExperimentValue(telemetry.IndexTm, "Входные данные", "ID");
-                        var indexTm = GetExperimentValue(telemetry.IndexTm, "Входные данные", "IndexTm");
-                        var id1 = GetExperimentValue(telemetry.IndexTm, "Входные данные", "Id1");
-                        var corrTm = GetExperimentValue(telemetry.IndexTm, "Входные данные", "CorrTm");
-                        var maxLagranj = GetExperimentValue(telemetry.IndexTm, "Входные данные", "MaxLagranj");
-                        var avgLagranj = GetExperimentValue(telemetry.IndexTm, "Входные данные", "AvgLagranj");
-
-                        <td class="@GetCellClass(status, "Входные данные")">@id</td>
-                        <td class="@GetCellClass(status, "Входные данные")">@indexTm</td>
-                        <td class="@GetCellClass(status, "Входные данные")">@id1</td>
-                        <td class="@GetCellClass(status, "Входные данные")">@corrTm</td>
-                        <td class="@GetCellClass(status, "Входные данные")">@status</td>
-                        <td class="@GetCellClass(status, "Входные данные")">@maxLagranj</td>
-                        <td class="@GetCellClass(status, "Входные данные")">@avgLagranj</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "ID")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "IndexTm")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "Id1")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "CorrTm")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "Status")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "MaxLagranj")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "AvgLagranj")</td>
                     }
 
                     <!-- Выбор действия -->
@@ -1244,19 +1231,11 @@ else
                     <!-- Данные для выбранного эксперимента -->
                     @if (!string.IsNullOrEmpty(selectedExperiment)  && selectedExperiment != "Входные данные")
                     {
-
-                        <td class="@GetCellClass(GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status"), "Эксперимент")">
-                            @GetExperimentValue(telemetry.IndexTm, selectedExperiment, "CorrTm")
-                        </td>
-                        <td class="@GetCellClass(GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status"), "Эксперимент")">
-                            @GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status")
-                        </td>
-                        <td class="@GetCellClass(GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status"), "Эксперимент")">
-                            @GetExperimentValue(telemetry.IndexTm, selectedExperiment, "MaxLagranj")
-                        </td>
-                        <td class="@GetCellClass(GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status"), "Эксперимент")">
-                            @GetExperimentValue(telemetry.IndexTm, selectedExperiment, "AvgLagranj")
-                        </td>
+                     
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, selectedExperiment, "CorrTm")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, selectedExperiment, "Status")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, selectedExperiment, "MaxLagranj")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, selectedExperiment, "AvgLagranj")</td>
                     }
                 </tr>
             }
