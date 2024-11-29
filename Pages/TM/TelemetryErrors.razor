@@ -90,18 +90,22 @@
     private string selectedExperiment; // Выбранный эксперимент
     private List<string> availableExperiments = new List<string>(); // Список экспериментов
 
-    private Dictionary<double, NedostovernayaTM> _experimentDataCache = new();
+    private Dictionary<string, string> experimentValues = new Dictionary<string, string>();
+
+    private Dictionary<int, ExperimentData> experimentDataCache = new();
 
 
 
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadData();
+        await LoadDataAsync();
+        // Загрузка данных эксперимента
+        await LoadExperimentValuesAsync();
     }
 
 
-    private async Task LoadData()
+    private async Task LoadDataAsync()
     {
         try
         {
@@ -272,35 +276,21 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    public async Task<string> GetExperimentValueAsync(double indexTm, string experimentLabel, string fieldName)
+    public async Task<string> GetExperimentValueAsync(double indexTm, int id1, string experimentLabel, string fieldName)
     {
-        // Метод для поиска данных асинхронно
         var data = await _context.tm
-            .Where(t => t.IndexTm == indexTm &&
-                       (t.experiment_label == experimentLabel || t.experiment_label == "Входные данные"))
-            .OrderBy(t => t.experiment_label == "Входные данные") // Сначала ищем эксперимент, потом "Входные данные"
-            .FirstOrDefaultAsync(); // Асинхронное получение первого элемента
+             .Where(t => t.IndexTm == indexTm && t.Id1 == id1)
+             .OrderBy(t => t.experiment_label == "Входные данные" ? 0 : 1)
+             .FirstOrDefaultAsync();
 
-        if (data != null)
+        return data != null ? fieldName switch
         {
-            Console.WriteLine($"Данные для IndexTm {indexTm} найдены: {data.experiment_label}.");
-
-            // Выбор значения по имени поля
-            return fieldName switch
-            {
-                "CorrTm" => data.CorrTm.ToString("F4"),
-                "Status" => data.Status,
-                "MaxLagranj" => data.MaxLagranj.ToString("F4"),
-                "AvgLagranj" => data.AvgLagranj.ToString("F4"),
-                "ID" => data.ID.ToString(),
-                "IndexTm" => data.IndexTm.ToString(),
-                "Id1" => data.Id1.ToString(),
-                _ => "-" // Если поле неизвестно
-            };
-        }
-
-        Console.WriteLine($"Не удалось найти данные для IndexTm {indexTm}.");
-        return "-";
+            "CorrTm" => data.CorrTm.ToString("F4"),
+            "MaxLagranj" => data.MaxLagranj.ToString("F4"),
+            "AvgLagranj" => data.AvgLagranj.ToString("F4"),
+            "Status" => data.Status.ToString(),
+            _ => "-"
+        } : "-";
     }
 
 
@@ -1110,11 +1100,23 @@
         }
     }
 
-    private string GetSelectedAction(int telemetryId, int id1)
+    private string GetSelectedAction(int telemetryId, int id1) =>
+    selectedActions.FirstOrDefault(a => a.TelemetryId == telemetryId && a.Id1 == id1)?.ActionName ?? string.Empty;
+
+    private async Task LoadExperimentValuesAsync()
     {
-        var action = selectedActions.FirstOrDefault(a => a.TelemetryId == telemetryId && a.Id1 == id1);
-        return action?.ActionName ?? string.Empty;
+        foreach (var telemetry in filteredTm)
+        {
+            foreach (var field in new[] { "CorrTm", "Status", "MaxLagranj", "AvgLagranj" })
+            {
+                var value = await GetExperimentValueAsync(telemetry.IndexTm, telemetry.Id1, selectedExperiment, field);
+                experimentValues[$"{telemetry.IndexTm}_{telemetry.Id1}_{field}"] = value;
+            }
+        }
     }
+
+    private string GetExperimentValue(double indexTm, int id1, string fieldName) =>
+     experimentValues.GetValueOrDefault($"{indexTm}_{id1}_{fieldName}", "Значение не найдено");
 
 }
 
@@ -1208,13 +1210,13 @@ else
                     else
                     {
                         <!-- Данные для выбранного эксперимента -->
-                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "ID")</td>
-                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "IndexTm")</td>
-                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "Id1")</td>
-                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "CorrTm")</td>
-                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "Status")</td>
-                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "MaxLagranj")</td>
-                        <td>@GetExperimentValueAsync(telemetry.IndexTm, "Входные данные", "AvgLagranj")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, telemetry.Id1, "Входные данные", "ID")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, telemetry.Id1, "Входные данные", "IndexTm")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, telemetry.Id1, "Входные данные", "Id1")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, telemetry.Id1, "Входные данные", "CorrTm")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, telemetry.Id1, "Входные данные", "Status")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, telemetry.Id1, "Входные данные", "MaxLagranj")</td>
+                        <td>@GetExperimentValueAsync(telemetry.IndexTm, telemetry.Id1, "Входные данные", "AvgLagranj")</td>
                     }
 
                     <!-- Выбор действия -->
@@ -1231,11 +1233,10 @@ else
                     <!-- Данные для выбранного эксперимента -->
                     @if (!string.IsNullOrEmpty(selectedExperiment)  && selectedExperiment != "Входные данные")
                     {
-                     
-                        <td>@GetExperimentValueAsync(telemetry.IndexTm, selectedExperiment, "CorrTm")</td>
-                        <td>@GetExperimentValueAsync(telemetry.IndexTm, selectedExperiment, "Status")</td>
-                        <td>@GetExperimentValueAsync(telemetry.IndexTm, selectedExperiment, "MaxLagranj")</td>
-                        <td>@GetExperimentValueAsync(telemetry.IndexTm, selectedExperiment, "AvgLagranj")</td>
+                        <td>@GetExperimentValue(telemetry.IndexTm, telemetry.Id1, "CorrTm")</td>
+                        <td>@GetExperimentValue(telemetry.IndexTm, telemetry.Id1, "Status")</td>
+                        <td>@GetExperimentValue(telemetry.IndexTm, telemetry.Id1, "MaxLagranj")</td>
+                        <td>@GetExperimentValue(telemetry.IndexTm, telemetry.Id1, "AvgLagranj")</td>
                     }
                 </tr>
             }
