@@ -251,6 +251,20 @@
     {
         var experiment = experimentData[input.IndexTm];
 
+<<<<<<< HEAD
+                    return new NedostovernayaTM
+                        {
+                            ID = input.ID, // Сохраняем оригинальный ID, если он важен
+                            IndexTm = input.IndexTm,
+                            experiment_label = input.experiment_label,
+                            CorrTm = experiment.CorrTm,
+                            Status = experiment.Status,
+                            MaxLagranj = experiment.MaxLagranj,
+                            AvgLagranj = experiment.AvgLagranj,
+                            // Добавляем другие свойства, если они есть
+                        };
+                }).ToList();
+=======
         // Создаем новый объект для таблицы `tm` вместо изменения существующего
         return new NedostovernayaTM
             {
@@ -264,6 +278,7 @@
                 // Добавляем другие свойства, если они есть
             };
     }).ToList();
+>>>>>>> features
 
             // Выводим отфильтрованные данные
             Console.WriteLine($"Отфильтрованных данных: {filteredTm.Count}");
@@ -278,10 +293,16 @@
 
     public async Task<string> GetExperimentValueAsync(double indexTm, int id1, string experimentLabel, string fieldName)
     {
+<<<<<<< HEAD
+        // Ищем данные для выбранного эксперимента
+        var experimentData = tm
+            .FirstOrDefault(t => t.IndexTm == indexTm && t.experiment_label == experimentLabel);
+=======
         var data = await _context.tm
              .Where(t => t.IndexTm == indexTm && t.Id1 == id1)
              .OrderBy(t => t.experiment_label == "Входные данные" ? 0 : 1)
              .FirstOrDefaultAsync();
+>>>>>>> features
 
         return data != null ? fieldName switch
         {
