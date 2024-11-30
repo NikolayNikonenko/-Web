@@ -286,118 +286,87 @@
 
     private async Task GenerateChart()
     {
-        if (double.TryParse(tmIndexInput, out double tmIndex))
-        {
-            // Шаг 1: Извлекаем данные по IndexTM
-            IQueryable<TMValues> query = _context.TMValues.Where(tv => tv.IndexTM == tmIndex);
-
-            // Извлекаем данные без фильтрации по дате
-            var tmValuesList = await query.ToListAsync();
-
-            Console.WriteLine($"Всего записей: {tmValuesList.Count}");
-
-            // Шаг 2: Фильтрация по временному интервалу
-            if (startDate.HasValue && endDate.HasValue)
-            {
-                chartData = tmValuesList
-                    .Where(tv =>
-                    {
-                        // Разделяем строку по символу "_", чтобы получить часы, минуты и секунды
-                        var timeParts = tv.NumberOfSrez.Split('_');
-                        if (timeParts.Length == 3 &&
-                            int.TryParse(timeParts[0], out int hours) &&
-                            int.TryParse(timeParts[1], out int minutes) &&
-                            int.TryParse(timeParts[2], out int seconds))
-                        {
-                            // Преобразуем в TimeSpan для сравнения
-                            var parsedTime = new TimeSpan(hours, minutes, seconds);
-                            var startTime = startDate.Value.TimeOfDay;
-                            var endTime = endDate.Value.TimeOfDay;
-
-                            Console.WriteLine($"Parsed TimeSpan: {parsedTime}, StartTime: {startTime}, EndTime: {endTime}");
-
-                            // Сравнение времени без учета даты
-                            return parsedTime >= startTime && parsedTime <= endTime;
-                        }
-                        else
-                        {
-                            Console.WriteLine($"Ошибка преобразования времени: {tv.NumberOfSrez}");
-                            return false;
-                        }
-                    })
-                    .ToList();
-            }
-            else
-            {
-                chartData = tmValuesList;
-            }
-
-            // Шаг 3: Применение прореживания (если задано)
-            if (pruningInterval > 0)
-            {
-                // Сортируем данные перед прореживанием, чтобы сохранить порядок срезов
-                chartData = chartData
-                    .OrderBy(tv => tv.NumberOfSrez)
-                    .ThenBy(tv => tv.OrderIndex)  // Убедимся, что данные сортируются по порядку
-                    .Where((tv, index) => index % pruningInterval == 0)  // Применяем прореживание
-                    .ToList();
-            }
-            else
-            {
-                // Просто сортируем данные, если интервал прореживания не задан
-                chartData = chartData
-                    .OrderBy(tv => tv.NumberOfSrez)
-                    .ThenBy(tv => tv.OrderIndex)
-                    .ToList();
-            }
-
-            // Проверяем наличие данных
-            if (!chartData.Any())
-            {
-                Console.WriteLine($"Нет данных для IndexTM: {tmIndex}");
-                chartDataAvailable = false;
-                return;
-            }
-
-            // Шаг 4: Извлечение дополнительных данных (если необходимо)
-            var DataInTm = await _context.tm
-                .Where(tm => tm.IndexTm == tmIndex)
-                .ToListAsync();
-
-            // Устанавливаем флаг доступности данных для графика
-            chartDataAvailable = true;
-            showChart = true;
-
-            // Формируем заголовок и метку оси Y для графика
-            string chartTitle = $"Индекс ТМ: {chartData[0].IndexTM}, Наименование: {chartData[0].NameTM}";
-            string yAxisLabel = GetYAxisLabel(chartData[0].Privyazka);
-
-            // Убедитесь, что элемент доступен перед вызовом JS
-            await Task.Delay(100);
-            StateHasChanged();
-
-            // Шаг 5: Вызов JavaScript для генерации графика
-            try
-            {
-                Console.WriteLine($"Прореженные данные для графика: {chartData.Count}");
-                foreach (var item in chartData)
-                {
-                    Console.WriteLine($"IndexTM: {item.IndexTM}, Время среза: {item.NumberOfSrez}, Id1: {item.Id1}");
-                }
-
-
-                await JS.InvokeVoidAsync("generateChart", chartElement, chartData, DataInTm, chartTitle, yAxisLabel);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Ошибка вызова JavaScript: {ex.Message}");
-            }
-        }
-        else
+        if (!double.TryParse(tmIndexInput, out double tmIndex))
         {
             chartDataAvailable = false;
             Console.WriteLine("Некорректный ввод номера ТМ.");
+            return;
         }
+
+        // Шаг 1: Извлекаем данные по IndexTM
+        IQueryable<TMValues> query = _context.TMValues.Where(tv => tv.IndexTM == tmIndex);
+
+        // Выбор входных данных
+        var inputData = await _context.TMValues
+            .Where(tm => tm.IndexTM == tmIndex && tm.experiment_label == "Входные данные")
+            .ToListAsync();
+
+        // Фильтрация данных по эксперименту
+        List<TMValues> experimentData = new();
+        if (!string.IsNullOrEmpty(selectedExperiment))
+        {
+            experimentData = await _context.TMValues
+                .Where(tv => tv.IndexTM == tmIndex && tv.experiment_label == selectedExperiment)
+                .ToListAsync();
+        }
+
+        // Логика фильтрации и прореживания для входных данных
+        var filteredInputData = ApplyFilters(inputData);
+
+        // Логика фильтрации и прореживания для экспериментальных данных
+        var filteredExperimentData = ApplyFilters(experimentData);
+        string chartTitle = $"Индекс ТМ: {filteredInputData[0].IndexTM}, Наименование: {filteredInputData[0].NameTM}";
+        string yAxisLabel = GetYAxisLabel(filteredInputData[0].Privyazka);
+
+        // Передача данных в JS для построения графика
+        try
+        {
+
+            await JS.InvokeVoidAsync("generateChart", chartElement, filteredInputData, filteredExperimentData, chartTitle, yAxisLabel);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка вызова JavaScript: {ex.Message}");
+        } 
+    }
+
+    // Метод для фильтрации и прореживания данных
+    private List<T> ApplyFilters<T>(List<T> dataList) where T : TMValues
+    {
+        // Пример: фильтрация по временному интервалу и применение прореживания
+        if (startDate.HasValue && endDate.HasValue)
+        {
+            dataList = dataList
+                .Where(tv => IsWithinTimeInterval(tv.NumberOfSrez))
+                .ToList();
+        }
+
+        if (pruningInterval > 0)
+        {
+            dataList = dataList
+                .OrderBy(tv => tv.NumberOfSrez)
+                .Where((tv, index) => index % pruningInterval == 0)
+                .ToList();
+        }
+
+        return dataList;
+    }
+
+    // Проверка попадания времени в интервал
+    private bool IsWithinTimeInterval(string numberOfSrez)
+    {
+        var timeParts = numberOfSrez.Split('_');
+        if (timeParts.Length == 3 &&
+            int.TryParse(timeParts[0], out int hours) &&
+            int.TryParse(timeParts[1], out int minutes) &&
+            int.TryParse(timeParts[2], out int seconds))
+        {
+            var parsedTime = new TimeSpan(hours, minutes, seconds);
+            var startTime = startDate.Value.TimeOfDay;
+            var endTime = endDate.Value.TimeOfDay;
+            return parsedTime >= startTime && parsedTime <= endTime;
+        }
+        return false;
     }
 
     private string GetRowClass(string status)
@@ -833,6 +802,7 @@
 @if (showChartInput)
 {
     <div class="mb-3">
+        <canvas id="chart" width="400" height="200" @ref="chartElement"></canvas>
         <input @bind="tmIndexInput" placeholder="Введите номер ТМ" class="form-control" />
         <button @onclick="GenerateChart" class="btn btn-primary mt-2">Построить график</button>
     </div>
