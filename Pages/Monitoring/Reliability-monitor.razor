@@ -4,7 +4,7 @@
 @using перенос_бд_на_Web.Services
 @using Microsoft.EntityFrameworkCore
 @inject ApplicationContext DbContext
-@inject             перенос_бд_на_Web.SlicesService SlicesService
+@inject перенос_бд_на_Web.SlicesService SlicesService
 @inject IJSRuntime JS
 @inject ReliabilityAnalyzer ReliabilityAnalyzer
 @inject PowerImbalanceService PowerImbalanceService
@@ -168,61 +168,73 @@
     </div>
 }
 
-@if (maxActivePowerImbalance.imbalance != null)
-{
-    <div>
-        <h4>Максимальный небаланс по активной мощности</h4>
-        <p>Наименование среза: @maxActivePowerImbalance.sliceName</p>
-        <p>Наименование узла: @maxActivePowerImbalance.imbalance.name_p</p>
-        <p>Небаланс: @maxActivePowerImbalance.imbalance.p_neb_p</p>
-    </div>
-}
-
-@if (maxReactivePowerImbalance.imbalance != null)
-{
-    <div>
-        <h4>Максимальный небаланс по реактивной мощности</h4>
-        <p>Наименование среза: @maxReactivePowerImbalance.sliceName</p>
-        <p>Наименование узла: @maxReactivePowerImbalance.imbalance.name_q</p>
-        <p>Небаланс: @maxReactivePowerImbalance.imbalance.q_neb_q</p>
-    </div>
-}
-
-@if (averageTotalActivePowerImbalance != 0)
-{
-    <div>
-        <h4>Усредненный суммарный небаланс по активной мощности</h4>
-        <p>@averageTotalActivePowerImbalance</p>
-    </div>
-}
-
-@if (averageTotalReactivePowerImbalance != 0)
-{
-    <div>
-        <h4>Усредненный суммарный небаланс по реактивной мощности</h4>
-        <p>@averageTotalReactivePowerImbalance</p>
-    </div>
-}
-
-@if (averageDeviation != 0)
-{
-    <div>
-        <h4>Среднее по выборке математическое ожидание отклонения измеренного от оцененного</h4>
-        <p>@averageDeviation</p>
-    </div>
-}
-
-@if (standardDeviation != 0)
-{
-    <div>
-        <h4>Среднеквадратичное отклонение измеренных значений</h4>
-        <p>@standardDeviation</p>
-    </div>
-}
-
 @if (!string.IsNullOrEmpty(errorMessage))
 {
     <p class="text-danger">@errorMessage</p>
+}
+
+@if (maxActivePowerImbalance.imbalance != null || maxReactivePowerImbalance.imbalance != null || averageTotalActivePowerImbalance != 0 || averageTotalReactivePowerImbalance != 0 || averageDeviation != 0 || standardDeviation != 0)
+{
+    <table class="table mt-4">
+        <thead>
+            <tr>
+                <th>Показатель</th>
+                <th>Значение</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (maxActivePowerImbalance.imbalance != null)
+            {
+                <tr>
+                    <td>Максимальный небаланс по активной мощности</td>
+                    <td>
+                        Наименование среза: @maxActivePowerImbalance.sliceName<br />
+                        Наименование узла: @maxActivePowerImbalance.imbalance.name_p<br />
+                        Небаланс: @maxActivePowerImbalance.imbalance.p_neb_p
+                    </td>
+                </tr>
+            }
+            @if (maxReactivePowerImbalance.imbalance != null)
+            {
+                <tr>
+                    <td>Максимальный небаланс по реактивной мощности</td>
+                    <td>
+                        Наименование среза: @maxReactivePowerImbalance.sliceName<br />
+                        Наименование узла: @maxReactivePowerImbalance.imbalance.name_q<br />
+                        Небаланс: @maxReactivePowerImbalance.imbalance.q_neb_q
+                    </td>
+                </tr>
+            }
+            @if (averageTotalActivePowerImbalance != 0)
+            {
+                <tr>
+                    <td>Усредненный суммарный небаланс по активной мощности</td>
+                    <td>@averageTotalActivePowerImbalance</td>
+                </tr>
+            }
+            @if (averageTotalReactivePowerImbalance != 0)
+            {
+                <tr>
+                    <td>Усредненный суммарный небаланс по реактивной мощности</td>
+                    <td>@averageTotalReactivePowerImbalance</td>
+                </tr>
+            }
+            @if (averageDeviation != 0)
+            {
+                <tr>
+                    <td>Среднее по выборке математическое ожидание отклонения измеренного от оцененного</td>
+                    <td>@averageDeviation</td>
+                </tr>
+            }
+            @if (standardDeviation != 0)
+            {
+                <tr>
+                    <td>Среднеквадратичное отклонение измеренных значений</td>
+                    <td>@standardDeviation</td>
+                </tr>
+            }
+        </tbody>
+    </table>
 }
 
 <style>
@@ -235,5 +247,20 @@
         .chart-container canvas {
             width: 100% !important;
             height: 100% !important;
+        }
+
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+        .table th, .table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+
+        .table th {
+            background-color: #f2f2f2;
+            text-align: left;
         }
 </style>

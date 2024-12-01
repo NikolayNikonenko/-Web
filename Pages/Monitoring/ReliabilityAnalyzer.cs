@@ -76,6 +76,8 @@ namespace перенос_бд_на_Web
             int successfulCount = 0;
             int processedCount = 0;
             object lockObj = new object();
+            // Создаем объект Rastr до начала цикла
+            IRastr rastr = new Rastr();
 
             await Task.Run(() =>
             {
@@ -87,7 +89,7 @@ namespace перенос_бд_на_Web
                     {
                         _logger.LogInformation($"Processing file: {filePath}");
 
-                        bool isSuccessful = AnalyzeFile(filePath);
+                        bool isSuccessful = AnalyzeFile(filePath, rastr);
 
                         lock (lockObj)
                         {
@@ -108,21 +110,22 @@ namespace перенос_бд_на_Web
                     }
                 });
             });
+            // Освобождаем ресурсы после завершения работы
+            rastr = null;
 
             return (successfulCount, totalCount);
         }
 
-        public bool AnalyzeFile(string filePath)
+        public bool AnalyzeFile(string filePath, IRastr rastr)
         {
-            IRastr Rastr = new Rastr();
             try
             {
                 //IRastr Rastr = new Rastr();
-                Rastr.Load(RG_KOD.RG_REPL, filePath, "");
+                rastr.Load(RG_KOD.RG_REPL, filePath, "");
                 // Задержка для имитации реального времени загрузки
                 Thread.Sleep(100);
 
-                var oc1 = Rastr.opf("s");
+                var oc1 = rastr.opf("s");
                 return (int)oc1 == 0;
             }
             catch (Exception ex)
