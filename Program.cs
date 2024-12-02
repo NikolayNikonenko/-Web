@@ -53,8 +53,11 @@ namespace перенос_бд_на_Web
             builder.Services.AddScoped<ReliabilityAnalyzer>();
             builder.Services.AddLogging();
             builder.Services.AddControllers();
+            builder.Services.AddSignalR();
 
             var app = builder.Build();
+
+            app.MapHub<DatabaseChangeHub>("/databaseChangeHub");
 
             // Configure the HTTP request pipeline
             if (!app.Environment.IsDevelopment())
@@ -62,7 +65,7 @@ namespace перенос_бд_на_Web
                 app.UseExceptionHandler("/Error");
                 app.UseHsts();
             }
-
+            app.UseDeveloperExceptionPage();
             app.UseHttpsRedirection();
             app.UseStaticFiles();
             app.UseRouting();

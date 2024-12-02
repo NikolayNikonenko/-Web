@@ -5,6 +5,7 @@
 @using перенос_бд_на_Web.Data
 @using перенос_бд_на_Web.Services
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.SignalR.Client;
 @inject SliceService sliceService
 @inject ActionService ActionService
 @inject TelemetryMonitoringService MonitoringService
@@ -76,12 +77,33 @@
     private string selectedExperiment; // Выбранный эксперимент
     private List<string> availableExperiments = new List<string>(); // Список экспериментов
 
+    private HubConnection hubConnection;
+
 
 
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadData();
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl("https://localhost:7065/databaseChangeHub")
+            .Build();
+
+        hubConnection.On("DatabaseChanged", async () =>
+        {
+            // Действия при изменении
+            await LoadData();
+            StateHasChanged();
+        });
+
+        await hubConnection.StartAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection != null)
+        {
+            await hubConnection.DisposeAsync();
+        }
     }
 
 
