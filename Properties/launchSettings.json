@@ -8,7 +8,7 @@
     }
   },
   "profiles": {
-    "перенос бд на Web": {
+    "Ревизор СМЗУ": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
