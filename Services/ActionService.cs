@@ -57,7 +57,7 @@ namespace перенос_бд_на_Web.Services
                 );
 
                 // Всего операций: обработка файлов + расчет корреляции
-                int totalOperations = filePathsInRange.Count; /*+ actions.GroupBy(a => new { a.TelemetryId, a.Id1 }).Count();*/
+                int totalOperations = filePathsInRange.Count;
                 int completedOperations = 0;
 
                 int orderIndex = 0;
@@ -93,9 +93,6 @@ namespace перенос_бд_на_Web.Services
                     experimentLabel, 
                     progress=>
                     {
-                        //completedOperations += progress; // Учитываем прогресс корреляции
-                        //int overallProgress = (int)((double)completedOperations / totalOperations * 100);
-                        //progressCallback(overallProgress);
                     },
                     setStatusBarVisible,
                     CancellationToken.None);

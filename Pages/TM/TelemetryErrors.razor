@@ -74,7 +74,10 @@
 
 
     private string selectedExperiment; // Выбранный эксперимент
+    private string newSelectedExperiment; // Для определения эксперимента как набора файлов для следующего эксперимента
     private List<string> availableExperiments = new List<string>(); // Список экспериментов
+
+    private string experimentalKit;
 
     protected override async Task OnInitializedAsync()
     {
@@ -781,6 +784,19 @@
             await InvokeAsync(StateHasChanged);
         }
     }
+
+    private async Task HandleExperimentChange(ChangeEventArgs e)
+    {
+        // Получаем значение из выпадающего списка
+        var newSelectedExperiment = e.Value?.ToString();
+
+        // Проверяем, отличается ли новый эксперимент от текущего experimentalKit
+        if (experimentalKit != newSelectedExperiment)
+        {
+            // Обновляем experimentalKit на новый эксперимент
+            experimentalKit = newSelectedExperiment;
+        }
+    }
 }
 
 
@@ -824,6 +840,21 @@
     <div class="alert alert-info mt-3">
         <h5>Выбранные действия</h5>
         <h6>Выбранный интервал: от @startDate.Value.ToString("g") до @endDate.Value.ToString("g")</h6>
+        <!-- Фильтр по экспериментам -->
+        @if (IsDropdownVisible)
+        {
+            <div class="form-group">
+                <label for="experimentSelect">Выбрать набор для применения изменений:</label>
+                <select id="experimentSelect" class="form-select" @onchange="HandleExperimentChange">
+                    <option value="" selected>Входные данные</option>
+                    @foreach (var experiment in availableExperiments)
+                    {
+                        <option value="@experiment">@experiment</option>
+                    }
+                </select>
+            </div>
+        }
+
 
         <!-- Таблица с выбранными действиями -->
         <table class="table table-bordered mt-3">
@@ -845,6 +876,7 @@
                 }
             </tbody>
         </table>
+
 
         <!-- Кнопка для выбора отслеживаемых телеизмерений и расчета корреляции -->
         <div class="mt-3">
