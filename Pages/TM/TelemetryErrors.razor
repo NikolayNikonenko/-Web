@@ -5,7 +5,6 @@
 @using перенос_бд_на_Web.Data
 @using перенос_бд_на_Web.Services
 @using Microsoft.EntityFrameworkCore
-@using Microsoft.AspNetCore.SignalR.Client;
 @inject SliceService sliceService
 @inject ActionService ActionService
 @inject TelemetryMonitoringService MonitoringService
@@ -14,7 +13,7 @@
 @inject CorrData corr
 @inject IJSRuntime JS
 
-<PageTitle>Выявленные недостоверности ТМ</PageTitle>
+<PageTitle>Выявленные некорректной ТМ ТМ</PageTitle>
 
 <style>
     .status-dostovernaya {
@@ -77,33 +76,12 @@
     private string selectedExperiment; // Выбранный эксперимент
     private List<string> availableExperiments = new List<string>(); // Список экспериментов
 
-    private HubConnection hubConnection;
-
 
 
 
     protected override async Task OnInitializedAsync()
     {
-        hubConnection = new HubConnectionBuilder()
-            .WithUrl("https://localhost:7065/databaseChangeHub")
-            .Build();
-
-        hubConnection.On("DatabaseChanged", async () =>
-        {
-            // Действия при изменении
-            await LoadData();
-            StateHasChanged();
-        });
-
-        await hubConnection.StartAsync();
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (hubConnection != null)
-        {
-            await hubConnection.DisposeAsync();
-        }
+        await LoadData();
     }
 
 
@@ -349,7 +327,7 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Ошибка вызова JavaScript: {ex.Message}");
-        } 
+        }
     }
 
     // Метод для фильтрации и прореживания данных
@@ -623,13 +601,13 @@
         }
 
         <div class="mt-2">
-            <button @onclick="() => ApplyTimeIntervalFilter(false)" class="btn btn-primary me-2">Применить фильтр</button>
+            <button @onclick="() => ApplyTimeIntervalFilter(false)" class="btn btn-primary me-2">Применить заданный интервал</button>
             <button @onclick="() => ApplyTimeIntervalFilter(true)" class="btn btn-secondary">Прореживать данные</button>
         </div>
     </div>
 }
 
-<h2>Выявленные недостоверности ТМ</h2>
+<h2>Выявленные некорректной ТМ</h2>
 
 <button @onclick="() => showTimeIntervalInput = !showTimeIntervalInput" class="btn btn-primary mt-2">
     @(showTimeIntervalInput ? "Скрыть выбор времени" : "Показать выбор времени")
@@ -938,6 +916,7 @@
         </div>
         @if (showManualMonitorModal)
         {
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
             <!-- Модальное окно для ручного ввода списка отслеживаемых ТМ -->
             <div class="modal d-block" tabindex="-1">
                 <div class="modal-dialog">
@@ -947,6 +926,13 @@
                             <button type="button" class="btn-close" @onclick="CloseManualMonitorModal"></button>
                         </div>
                         <div class="modal-body">
+                            <!-- Информационное сообщение с иконкой -->
+                            <div class="mb-2 d-flex align-items-center">
+                                <i class="bi bi-info-circle text-primary me-2"></i>
+                                <span class="text-muted">
+                                    Введите интересующие вас номера ТМ через запятую.
+                                </span>
+                            </div>
                             <!-- Поле ввода номеров ТМ -->
                             <input type="text" class="form-control" @bind="manualTMInput" placeholder="Введите номера ТМ через запятую">
                             @if (!string.IsNullOrEmpty(errorMessage))
@@ -965,7 +951,7 @@
                             @if (selectedTMValues.Any() || !string.IsNullOrEmpty(manualTMInput))
                             {
                                 <button class="btn btn-primary" @onclick="async () => await CombineAndSubmitSets()">
-                                    Объединить выбранный готовый набор и введённые вручную ТМ
+                                    Добавить к имеющимся
                                 </button>
                             }
                         </div>
@@ -1105,107 +1091,109 @@
 }
 else
 {
-    <table class="table table-bordered">
-        <thead>
-            <!-- Первый уровень заголовков -->
-            <tr>
-                <th colspan="8" class="text-center">Входные данные</th>
-                @if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
-                {
-                    <th colspan="4" class="text-center">Значения экспериментов</th>
-                }
-            </tr>
-            <!-- Второй уровень заголовков -->
-            <tr>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.ID))">
-                    Идентификатор @(currentSortColumn == nameof(NedostovernayaTM.ID) ? (isAscending ? "▲" : "▼") : "")
-                </th>
-                <th>
-                    <span @onclick="() => SortData(nameof(NedostovernayaTM.IndexTm))" style="cursor:pointer;">
-                        Индекс ТМ @(currentSortColumn == nameof(NedostovernayaTM.IndexTm) ? (isAscending ? "▲" : "▼") : "")
-                    </span>
-                    <button @onclick="ToggleSearch" class="btn btn-link" style="padding:0; margin-left:5px;">
-                        🔍
-                    </button>
-                </th>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.CorrTm))">
-                    Узел @(currentSortColumn == nameof(NedostovernayaTM.Id1) ? (isAscending ? "▲" : "▼") : "")
-                </th>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.CorrTm))">
-                    Коэффициент корреляции @(currentSortColumn == nameof(NedostovernayaTM.CorrTm) ? (isAscending ? "▲" : "▼") : "")
-                </th>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.Status))">
-                    Статус @(currentSortColumn == nameof(NedostovernayaTM.Status) ? (isAscending ? "▲" : "▼") : "")
-                </th>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.MaxLagranj))">
-                    Максимальное значение лагранжиана @(currentSortColumn == nameof(NedostovernayaTM.MaxLagranj) ? (isAscending ? "▲" : "▼") : "")
-                </th>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.AvgLagranj))">
-                    Среднее значение лагранжиана @(currentSortColumn == nameof(NedostovernayaTM.AvgLagranj) ? (isAscending ? "▲" : "▼") : "")
-                </th>
-                <th @onclick="() => SortData(nameof(NedostovernayaTM.recomendedActions))">
-                    Действия по достоверизации @(currentSortColumn == nameof(NedostovernayaTM.recomendedActions) ? (isAscending ? "▲" : "▼") : "")
-                </th>
-                @if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
-                {
-                    <th>Коэффициент корреляции</th>
-                    <th>Статус</th>
-                    <th>Максимальное значение лагранжиана</th>
-                    <th>Среднее значение лагранжиана</th>
-                }
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var telemetry in filteredTm)
-            {
-                <tr class="@GetRowClass(telemetry.Status)">
-
-                    @if (string.IsNullOrEmpty(selectedExperiment) || selectedExperiment == "Входные данные")
-                    {
-                        <!-- Входные данные -->
-                        <td>@telemetry.ID</td>
-                        <td>@telemetry.IndexTm</td>
-                        <td>@telemetry.Id1</td>
-                        <td>@Math.Round(telemetry.CorrTm, 4)</td>
-                        <td>@telemetry.Status</td>
-                        <td>@Math.Round(telemetry.MaxLagranj, 4)</td>
-                        <td>@Math.Round(telemetry.AvgLagranj, 4)</td>
-                    }
-                    else
-                    {
-                        <!-- Данные для выбранного эксперимента -->
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "ID")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "IndexTm")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "Id1")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "CorrTm")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "Status")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "MaxLagranj")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "AvgLagranj")</td>
-                    }
-
-                    <td>
-                        <select class="form-select"
-                                value="@GetSelectedAction((int)telemetry.IndexTm, telemetry.Id1)"
-                                @onchange="(e) => SelectAction(telemetry, e.Value.ToString())">
-                            <option value="">Выберите действие</option>
-                            <option value="Изменить знак ТМ">Изменить знак ТМ</option>
-                            <option value="Создать дорасчет">Создать дорасчет</option>
-                            <option value="Исключить из ОС">Исключить из ОС</option>
-                        </select>
-                    </td>
-                    <!-- Добавляем значения для каждого эксперимента -->
+    <div style="overflow-y: auto; max-height: 1000px;">
+        <table class="table table-bordered" style="position: relative; border-collapse: collapse; width: 100%; padding:0; margin:0">
+            <thead style="position: sticky; top: 0; background-color: white; z-index: 2; padding:0; margin:0">
+                <!-- Первый уровень заголовков -->
+                <tr>
+                    <th colspan="8" class="text-center">Входные данные</th>
                     @if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
                     {
-
-                        <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "CorrTm")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "MaxLagranj")</td>
-                        <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "AvgLagranj")</td>
+                        <th colspan="4" class="text-center">Значения экспериментов</th>
                     }
                 </tr>
-            }
-        </tbody>
-    </table>
+                <!-- Второй уровень заголовков -->
+                <tr>
+                    <th @onclick="() => SortData(nameof(NedostovernayaTM.ID))">
+                        Идентификатор @(currentSortColumn == nameof(NedostovernayaTM.ID) ? (isAscending ? "▲" : "▼") : "")
+                    </th>
+                    <th>
+                        <span @onclick="() => SortData(nameof(NedostovernayaTM.IndexTm))" style="cursor:pointer;">
+                            Индекс ТМ @(currentSortColumn == nameof(NedostovernayaTM.IndexTm) ? (isAscending ? "▲" : "▼") : "")
+                        </span>
+                        <button @onclick="ToggleSearch" class="btn btn-link" style="padding:0; margin-left:5px;">
+                            🔍
+                        </button>
+                    </th>
+                    <th @onclick="() => SortData(nameof(NedostovernayaTM.CorrTm))">
+                        Узел @(currentSortColumn == nameof(NedostovernayaTM.Id1) ? (isAscending ? "▲" : "▼") : "")
+                    </th>
+                    <th @onclick="() => SortData(nameof(NedostovernayaTM.CorrTm))">
+                        Коэффициент корреляции @(currentSortColumn == nameof(NedostovernayaTM.CorrTm) ? (isAscending ? "▲" : "▼") : "")
+                    </th>
+                    <th @onclick="() => SortData(nameof(NedostovernayaTM.Status))">
+                        Статус @(currentSortColumn == nameof(NedostovernayaTM.Status) ? (isAscending ? "▲" : "▼") : "")
+                    </th>
+                    <th @onclick="() => SortData(nameof(NedostovernayaTM.MaxLagranj))">
+                        Максимальное значение лагранжиана @(currentSortColumn == nameof(NedostovernayaTM.MaxLagranj) ? (isAscending ? "▲" : "▼") : "")
+                    </th>
+                    <th @onclick="() => SortData(nameof(NedostovernayaTM.AvgLagranj))">
+                        Среднее значение лагранжиана @(currentSortColumn == nameof(NedostovernayaTM.AvgLagranj) ? (isAscending ? "▲" : "▼") : "")
+                    </th>
+                    <th @onclick="() => SortData(nameof(NedostovernayaTM.recomendedActions))">
+                        Действия по достоверизации @(currentSortColumn == nameof(NedostovernayaTM.recomendedActions) ? (isAscending ? "▲" : "▼") : "")
+                    </th>
+                    @if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
+                    {
+                        <th>Коэффициент корреляции</th>
+                        <th>Статус</th>
+                        <th>Максимальное значение лагранжиана</th>
+                        <th>Среднее значение лагранжиана</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var telemetry in filteredTm)
+                {
+                    <tr class="@GetRowClass(telemetry.Status)">
+
+                        @if (string.IsNullOrEmpty(selectedExperiment) || selectedExperiment == "Входные данные")
+                        {
+                            <!-- Входные данные -->
+                            <td>@telemetry.ID</td>
+                            <td>@telemetry.IndexTm</td>
+                            <td>@telemetry.Id1</td>
+                            <td>@Math.Round(telemetry.CorrTm, 4)</td>
+                            <td>@telemetry.Status</td>
+                            <td>@Math.Round(telemetry.MaxLagranj, 4)</td>
+                            <td>@Math.Round(telemetry.AvgLagranj, 4)</td>
+                        }
+                        else
+                        {
+                            <!-- Данные для выбранного эксперимента -->
+                            <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "ID")</td>
+                            <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "IndexTm")</td>
+                            <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "Id1")</td>
+                            <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "CorrTm")</td>
+                            <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "Status")</td>
+                            <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "MaxLagranj")</td>
+                            <td>@GetExperimentValue(telemetry.IndexTm, "Входные данные", "AvgLagranj")</td>
+                        }
+
+                        <td>
+                            <select class="form-select"
+                                    value="@GetSelectedAction((int)telemetry.IndexTm, telemetry.Id1)"
+                                    @onchange="(e) => SelectAction(telemetry, e.Value.ToString())">
+                                <option value="">Выберите действие</option>
+                                <option value="Изменить знак ТМ">Изменить знак ТМ</option>
+                                <option value="Создать дорасчет">Создать дорасчет</option>
+                                <option value="Исключить из ОС">Исключить из ОС</option>
+                            </select>
+                        </td>
+                        <!-- Добавляем значения для каждого эксперимента -->
+                        @if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
+                        {
+
+                            <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "CorrTm")</td>
+                            <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "Status")</td>
+                            <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "MaxLagranj")</td>
+                            <td>@GetExperimentValue(telemetry.IndexTm, selectedExperiment, "AvgLagranj")</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 }
 
 
