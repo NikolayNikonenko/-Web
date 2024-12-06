@@ -28,7 +28,7 @@ namespace перенос_бд_на_Web
             string endTimeStr = endDateTime.ToString("HH_mm_ss");
 
             var allSlices = await _context.slices.ToListAsync();
-
+            //sfgerf
             return allSlices
                 .Where(s =>
                 {
