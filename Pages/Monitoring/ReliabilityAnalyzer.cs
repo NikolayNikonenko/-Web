@@ -66,39 +66,45 @@ namespace перенос_бд_на_Web
         }
 
         public async Task<(int successfulCount, int totalCount)> AnalyzeReliabilityData(
-            DateTime startDateTime,
-            DateTime endDateTime,
-            List<string> filePaths,
-            Action<int> progressCallback,
-            CancellationToken cancellationToken)
+    DateTime startDateTime,
+    DateTime endDateTime,
+    List<string> filePaths,
+    Action<int> progressCallback,
+    CancellationToken cancellationToken)
         {
             int totalCount = filePaths.Count;
             int successfulCount = 0;
             int processedCount = 0;
-            object lockObj = new object();
-            // Создаем объект Rastr до начала цикла
-            IRastr rastr = new Rastr();
 
-            await Task.Run(() =>
+            // Размер пакета для обработки
+            int batchSize = 10;
+
+            var fileBatches = filePaths
+                .Select((file, index) => new { file, index })
+                .GroupBy(x => x.index / batchSize)
+                .Select(group => group.Select(x => x.file).ToList())
+                .ToList();
+
+            foreach (var batch in fileBatches)
             {
-                Parallel.ForEach(filePaths, new ParallelOptions { CancellationToken = cancellationToken }, filePath =>
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
 
+                // Создаем объект Rastr для текущего пакета
+                IRastr rastr = new Rastr();
+
+                foreach (var filePath in batch)
+                {
                     try
                     {
                         _logger.LogInformation($"Processing file: {filePath}");
 
                         bool isSuccessful = AnalyzeFile(filePath, rastr);
 
-                        lock (lockObj)
+                        if (isSuccessful)
                         {
-                            if (isSuccessful)
-                            {
-                                successfulCount++;
-                            }
-                            processedCount++;
+                            successfulCount++;
                         }
+                        processedCount++;
 
                         int progress = (int)((double)processedCount / totalCount * 100);
                         progressCallback(progress);
@@ -108,10 +114,11 @@ namespace перенос_бд_на_Web
                         _logger.LogError($"Ошибка при обработке файла {filePath}: {ex.Message}");
                         _logger.LogError($"StackTrace: {ex.StackTrace}");
                     }
-                });
-            });
-            // Освобождаем ресурсы после завершения работы
-            rastr = null;
+                }
+
+                // Освобождаем объект Rastr после обработки пакета
+                rastr = null;
+            }
 
             return (successfulCount, totalCount);
         }

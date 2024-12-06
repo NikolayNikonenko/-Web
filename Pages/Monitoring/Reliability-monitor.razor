@@ -137,6 +137,12 @@
         cancellationTokenSource?.Cancel();
         cancellationTokenSource?.Dispose();
     }
+
+    private double GetSuccessRate()
+    {
+        return totalCount > 0 ? Math.Round((double)successfulCount / totalCount * 100,3) : 0;
+    }
+
 }
 
 <PageTitle>Мониторинг надежности</PageTitle>
@@ -163,8 +169,14 @@
 
 @if (totalCount > 0)
 {
-    <div class="mt-4 chart-container">
-        <canvas id="chart" @ref="chartElement"></canvas>
+    <div class="mt-4">
+        <h5>Расчетный интервал: от @startDateTime до @endDateTime</h5>
+        <div class="chart-container d-flex">
+            <canvas id="chart" @ref="chartElement"></canvas>
+            <div class="chart-info">
+                <p>Надежность СМЗУ: @GetSuccessRate()%</p>
+            </div>
+        </div>
     </div>
 }
 
@@ -190,7 +202,7 @@
                     <td>
                         Наименование среза: @maxActivePowerImbalance.sliceName<br />
                         Наименование узла: @maxActivePowerImbalance.imbalance.name_p<br />
-                        Небаланс: @maxActivePowerImbalance.imbalance.p_neb_p
+                        Небаланс: @Math.Round(maxActivePowerImbalance.imbalance.p_neb_p,3)
                     </td>
                 </tr>
             }
@@ -201,7 +213,7 @@
                     <td>
                         Наименование среза: @maxReactivePowerImbalance.sliceName<br />
                         Наименование узла: @maxReactivePowerImbalance.imbalance.name_q<br />
-                        Небаланс: @maxReactivePowerImbalance.imbalance.q_neb_q
+                        Небаланс: @Math.Round(maxReactivePowerImbalance.imbalance.q_neb_q,3)
                     </td>
                 </tr>
             }
@@ -209,30 +221,34 @@
             {
                 <tr>
                     <td>Усредненный суммарный небаланс по активной мощности</td>
-                    <td>@averageTotalActivePowerImbalance</td>
+                    <td>@Math.Round(averageTotalActivePowerImbalance,3)</td>
                 </tr>
             }
             @if (averageTotalReactivePowerImbalance != 0)
             {
                 <tr>
                     <td>Усредненный суммарный небаланс по реактивной мощности</td>
-                    <td>@averageTotalReactivePowerImbalance</td>
+                    <td>@Math.Round(averageTotalReactivePowerImbalance,3)</td>
                 </tr>
             }
             @if (averageDeviation != 0)
             {
                 <tr>
                     <td>Среднее по выборке математическое ожидание отклонения измеренного от оцененного</td>
-                    <td>@averageDeviation</td>
+                    <td>@Math.Round(averageDeviation,3)</td>
                 </tr>
             }
             @if (standardDeviation != 0)
             {
                 <tr>
                     <td>Среднеквадратичное отклонение измеренных значений</td>
-                    <td>@standardDeviation</td>
+                    <td>@Math.Round(standardDeviation,3)</td>
                 </tr>
             }
+            <tr>
+                <td>Процент успешных ОС к общему числу ОС</td>
+                <td>@GetSuccessRate()%</td>
+            </tr>
         </tbody>
     </table>
 }
