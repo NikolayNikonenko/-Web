@@ -13,7 +13,7 @@ namespace перенос_бд_на_Web.Services
         }
 
         // Метод для получения путей файлов в указанном временном интервале
-        public async Task<List<string>> GetFilePathsInRangeAsync(DateTime startDateTime, DateTime endDateTime)
+        public async Task<List<string>> GetFilePathsInRangeAsync(DateTime startDateTime, DateTime endDateTime, string experimentalKit)
         {
             using (var scope = _serviceScopeFactory.CreateScope())
             {
@@ -24,16 +24,22 @@ namespace перенос_бд_на_Web.Services
                 string startTimeStr = startDateTime.ToString("HH_mm_ss");
                 string endTimeStr = endDateTime.ToString("HH_mm_ss");
 
-                var allSlices = await scopedContext.slices.ToListAsync();
+                // Загружаем только срезы с нужной меткой
+                var filteredSlices = await scopedContext.slices
+                    .Where(s => s.experiment_label == experimentalKit)
+                    .ToListAsync();
 
-                return allSlices
+                return filteredSlices
                     .Where(s =>
                     {
                         var pathParts = s.SlicePath.Split(Path.DirectorySeparatorChar);
-                        if (pathParts.Length < 2) return false;
 
-                        var datePart = pathParts[^3];
-                        var timePart = pathParts[^2];
+                        // Проверяем минимальную длину пути для обоих случаев
+                        if (pathParts.Length < 5) return false;
+
+                        // Извлекаем части пути для проверки
+                        var datePart = experimentalKit == "Входные данные" ? pathParts[^3] : pathParts[^3]; // Дата
+                        var timePart = experimentalKit == "Входные данные" ? pathParts[^2] : pathParts[^2]; // Время
 
                         if (!DateTime.TryParseExact(datePart, "yyyy_MM_dd", null, System.Globalization.DateTimeStyles.None, out DateTime fileDate))
                             return false;
@@ -42,7 +48,6 @@ namespace перенос_бд_на_Web.Services
                             return false;
 
                         var fileDateTime = fileDate.Add(fileTime.TimeOfDay);
-
                         return fileDateTime >= startDateTime && fileDateTime <= endDateTime;
                     })
                     .Select(s => s.SlicePath)

@@ -7,6 +7,7 @@ namespace перенос_бд_на_Web.Services
     {
         private readonly ApplicationContext _context;
         private readonly SliceService _sliceService;
+        string experimentalKit = "Входные данные";
 
         public DataFilterService(ApplicationContext context, SliceService sliceService)
         {
@@ -34,7 +35,7 @@ namespace перенос_бд_на_Web.Services
         // Метод для фильтрации данных по временному интервалу
         private async Task<List<TMValues>> FilterByTimeIntervalAsync(DateTime startDate, DateTime endDate, bool isThinning, int thinningInterval)
         {
-            var filePaths = await _sliceService.GetFilePathsInRangeAsync(startDate, endDate);
+            var filePaths = await _sliceService.GetFilePathsInRangeAsync(startDate, endDate, experimentalKit);
 
             if (!filePaths.Any())
             {

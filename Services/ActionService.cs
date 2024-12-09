@@ -33,6 +33,7 @@ namespace перенос_бд_на_Web.Services
         public async Task ExecuteAction(
             List<VerificationAction> actions,
             List<TMValues> tmValues,
+            string experimentalKit,
             Action<int> progressCallback,
             Action<bool> setStatusBarVisible
             )
@@ -53,7 +54,8 @@ namespace перенос_бд_на_Web.Services
 
                 var filePathsInRange = await _sliceService.GetFilePathsInRangeAsync(
                 actions.Min(a => a.StartDate),
-                actions.Max(a => a.EndDate)
+                actions.Max(a => a.EndDate),
+                experimentalKit
                 );
 
                 // Всего операций: обработка файлов + расчет корреляции
@@ -227,6 +229,7 @@ namespace перенос_бд_на_Web.Services
          _fullSaveDirectory,                     
          currentDate,
          experimentLabel,
+         subFolder1,
          subFolder2                              
          );
 
