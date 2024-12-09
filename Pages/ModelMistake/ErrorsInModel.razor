@@ -19,11 +19,19 @@
     private IBrowserFile uploadedFile;
     private string selectedFilePath;
 
+    private string lastFilePath;
+
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
+            // Загрузка пути файла
+            lastFilePath = await _modelContext.file_paths
+                .OrderByDescending(fp => fp.updatedAt)
+                .Select(fp => fp.path)
+                .FirstOrDefaultAsync();
+
             // Загрузка данных из базы данных
             modelErrors = await _modelContext.modelErrors.AsNoTracking().ToListAsync();
             filtredModelErrors = modelErrors;
@@ -55,6 +63,21 @@
         }
     }
 
+    public async Task UpdateFilePathAsync(string filePath)
+    {
+        try
+        {
+            await _modelContext.Database.ExecuteSqlRawAsync(
+                "SELECT UpdateFilePath({0})", filePath);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка при обновлении пути файла: {ex.Message}");
+        }
+    }
+
+
+
     private async Task OnInputFileChange(InputFileChangeEventArgs e)
     {
         uploadedFile = e.File;
@@ -75,6 +98,10 @@
             }
 
             selectedFilePath = savedFilePath;
+
+            // Сохранение пути в БД
+            await UpdateFilePathAsync(selectedFilePath);
+
             Console.WriteLine($"Файл успешно сохранен по пути: {savedFilePath}");
         }
         catch (Exception ex)
@@ -156,6 +183,12 @@
 }
 @if (modelErrors != null && modelErrors.Any())
 {
+
+    @if (!string.IsNullOrEmpty(lastFilePath))
+    {
+        <p><strong>Выявленные ошибки для файла:</strong> @lastFilePath</p>
+    }
+
     <table class="table table-bordered mt-3">
         <thead>
             <tr>
