@@ -17,12 +17,8 @@
     private string searchTerm = string.Empty;
     private bool showSearch = false;
 
-
-    // Поля для фильтрации
-    private DateTime? startDate;
-    private DateTime? endDate;
-    private bool isThinning = false; // Флаг для включения прореживания
-    private int thinningInterval; // Интервал прореживания
+    private IBrowserFile uploadedFile;
+    private string selectedFilePath;
 
 
     protected override void OnInitialized()
@@ -30,23 +26,53 @@
         findErrors = new FindErrors(_modelContext); // Инициализация экземпляра
     }
 
-
     private async Task IdentifyErrors()
     {
-        await findErrors.CalculateModelErrorsAsync(); // Запуск поиска ошибок
-        modelErrors = await _modelContext.modelErrors.AsNoTracking().ToListAsync(); // Обновляем модель ошибок после выполнения поиска
-        filtredModelErrors = modelErrors; // Обновляем отфильтрованные ошибки
+        if (!string.IsNullOrWhiteSpace(selectedFilePath))
+        {
+            try
+            {
+                await findErrors.CalculateModelErrorsAsync(selectedFilePath); // Передаем путь к файлу
+                modelErrors = await _modelContext.modelErrors.AsNoTracking().ToListAsync(); // Обновляем данные ошибок
+                filtredModelErrors = modelErrors;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка при расчете: {ex.Message}");
+            }
+        }
+        else
+        {
+            Console.WriteLine("Файл не был выбран или сохранен.");
+        }
     }
 
-
-    private async Task ApplyTimeIntervalFilter(bool isThinning)
+    private async Task OnInputFileChange(InputFileChangeEventArgs e)
     {
-        this.isThinning = isThinning;
-        filteredTMValues = await _dataFilterService.ApplyTimeIntervalFilterAsync(
-            startDate, endDate, isThinning, thinningInterval
-        );
+        uploadedFile = e.File;
 
-        SortData(currentSortColumn); // Сортируем отфильтрованные данные
+        string uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "UploadedFiles");
+        if (!Directory.Exists(uploadsFolder))
+        {
+            Directory.CreateDirectory(uploadsFolder);
+        }
+
+        string savedFilePath = Path.Combine(uploadsFolder, uploadedFile.Name);
+        try
+        {
+            using (var fileStream = new FileStream(savedFilePath, FileMode.Create))
+            {
+                // Считываем содержимое файла и копируем в файл
+                await uploadedFile.OpenReadStream(maxAllowedSize: 10485760).CopyToAsync(fileStream); // 10 MB
+            }
+
+            selectedFilePath = savedFilePath;
+            Console.WriteLine($"Файл успешно сохранен по пути: {savedFilePath}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка при сохранении файла: {ex.Message}");
+        }
     }
 
 
@@ -106,31 +132,8 @@
 
 
 <div class="mb-3">
-    <label>Начало временного промежутка:</label>
-    <input type="datetime-local" @bind="startDate" class="form-control" />
-
-    <label>Конец временного промежутка:</label>
-    <input type="datetime-local" @bind="endDate" class="form-control" />
-
-    <div class="form-check mt-2">
-        <input type="checkbox" @bind="isThinning" class="form-check-input" id="thinning" />
-        <label class="form-check-label" for="thinning">Прореживание данных</label>
-    </div>
-
-    @if (isThinning)
-    {
-        <div class="mb-3">
-            <label>Интервал прореживания (в минутах):</label>
-            <input type="number" @bind="thinningInterval" min="1" class="form-control" />
-        </div>
-    }
-
-    <div class="mt-2">
-        <button @onclick="() => ApplyTimeIntervalFilter(false)" class="btn btn-primary me-2">Применить фильтр</button>
-        <button @onclick="() => ApplyTimeIntervalFilter(true)" class="btn btn-secondary">Прореживать данные</button>
-    </div>
+    <InputFile OnChange="OnInputFileChange" MaxAllowedSize="10485760" /> <!-- 10 MB -->
 </div>
-
 
 <button @onclick="IdentifyErrors" class="btn btn-danger mb-3">Выявить ошибки</button>
 

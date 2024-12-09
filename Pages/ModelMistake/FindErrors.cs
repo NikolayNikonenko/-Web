@@ -16,14 +16,15 @@ namespace перенос_бд_на_Web.Pages.ModelMistake
         {
             _modelContext = modelContext;
         }
-        public async Task OnGetAsync()
+        public async Task OnGetAsync(string selectedFilePath)
         {
-            await CalculateModelErrorsAsync();
+            string dirName = selectedFilePath;
+            await CalculateModelErrorsAsync(dirName);
             ErrModel = await _modelContext.modelErrors.AsNoTracking().ToListAsync();
         }
-        public async Task CalculateModelErrorsAsync()
+        public async Task CalculateModelErrorsAsync(string dirName)
         {
-            string dirName = "D:\\учеба\\магистратура\\последний рывок\\диплом\\исходные срезы\\105 срезов для тестировки ПО\\2023_01_11\\07_11_30\\roc_debug_after_OC";
+            
             var directory = new DirectoryInfo(dirName);
             Console.BufferHeight = 10000;
 

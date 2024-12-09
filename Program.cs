@@ -8,6 +8,8 @@ using перенос_бд_на_Web.Data;
 using перенос_бд_на_Web.Models;
 using перенос_бд_на_Web.Services;
 using перенос_бд_на_Web.Pages.TM;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 namespace перенос_бд_на_Web
 {
@@ -16,11 +18,29 @@ namespace перенос_бд_на_Web
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+            builder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+            builder.WebHost.UseKestrel();
 
-            // Настройки Kestrel
-            builder.WebHost.ConfigureKestrel(serverOptions =>
+
+            builder.Services.Configure<IISServerOptions>(options =>
             {
-                serverOptions.Limits.MaxRequestBodySize = 10485760; // 10 MB
+                options.MaxRequestBodySize = 10485760; // Увеличьте лимит до 10 MB
+            });
+
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                options.Limits.MaxRequestBodySize = 10485760; // Увеличьте лимит до 10 MB
+            });
+
+            builder.Services.Configure<KestrelServerOptions>(options =>
+            {
+                // Установите максимальный размер тела запроса (в байтах)
+                options.Limits.MaxRequestBodySize = 10485760; // 10 MB
+            });
+
+            builder.Services.Configure<FormOptions>(options =>
+            {
+                options.MultipartBodyLengthLimit = 10485760; // 10 MB
             });
 
 
