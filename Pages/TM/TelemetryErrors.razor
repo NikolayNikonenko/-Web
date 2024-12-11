@@ -4,7 +4,6 @@
 @using перенос_бд_на_Web.Models
 @using перенос_бд_на_Web.Data
 @using перенос_бд_на_Web.Services
-@using Microsoft.EntityFrameworkCore
 @inject SliceService sliceService
 @inject ActionService ActionService
 @inject TelemetryMonitoringService MonitoringService
@@ -13,7 +12,7 @@
 @inject CorrData corr
 @inject IJSRuntime JS
 
-<PageTitle>Выявленные некорректной ТМ ТМ</PageTitle>
+<PageTitle>Поиск некорректной ТМ </PageTitle>
 
 <style>
     .status-dostovernaya {
@@ -614,7 +613,7 @@
     </div>
 }
 
-<h2>Выявленные некорректной ТМ</h2>
+<h2>Поиск некорректной ТМ</h2>
 
 <button @onclick="() => showTimeIntervalInput = !showTimeIntervalInput" class="btn btn-primary mt-2">
     @(showTimeIntervalInput ? "Скрыть выбор времени" : "Показать выбор времени")

@@ -1,0 +1,93 @@
+﻿@page "/preprocessing"
+@using перенос_бд_на_Web.Models
+@using перенос_бд_на_Web.Services
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationContext _context
+@inject DataFilterService _dataFilterService
+
+<PageTitle>Предварительная подготовка файлов</PageTitle>
+
+<h3>Предварительная подготовка файлов</h3>
+
+<div>
+    <button class="btn btn-primary mt-2" @onclick="ToggleDateIntervalFields">Задать интервал для расчета ПТИ ДТИ</button>
+</div>
+
+@code {
+    private DateTime? startDate;
+    private DateTime? endDate;
+    private int thinningInterval = 1;
+    private bool isThinning = false; // Флаг для прореживания
+    private bool showDateIntervalFields = false; // Флаг для отображения полей
+
+    private List<TMValues> filteredData;
+
+    private async Task ApplyFilters()
+    {
+        try
+        {
+            filteredData = await _dataFilterService.ApplyTimeIntervalFilterAsync(startDate, endDate, isThinning, thinningInterval);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private void ToggleDateIntervalFields()
+    {
+        showDateIntervalFields = !showDateIntervalFields; // Переключение видимости
+    }
+}
+
+@if (showDateIntervalFields)
+{
+    <div class="d-flex flex-column mt-3">
+        <label>Начало временного промежутка:</label>
+        <input type="datetime-local" @bind="startDate" class="form-control mb-2" />
+
+
+        <label>Конец временного промежутка:</label>
+        <input type="datetime-local" @bind="endDate" class="form-control" />
+    </div>
+    @if (isThinning)
+    {
+        <div class="mt-3">
+            <label>Интервал прореживания:</label>
+            <input type="number" @bind="thinningInterval" min="1" class="form-control" />
+        </div>
+    }
+
+    <div class="form-check mt-3">
+        <input type="checkbox" @bind="isThinning" class="form-check-input" />
+        <label class="form-check-label">Приментиь прореживание</label>
+    </div>
+
+    <button class="btn btn-primary mt-2" @onclick="ApplyFilters">Применить заданный интервал</button>
+}
+
+@if (filteredData != null)
+{
+    <h4>Результаты фильтрации:</h4>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>IndexTM</th>
+                <th>IzmerValue</th>
+                <th>OcenValue</th>
+                <th>SliceID</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in filteredData)
+            {
+                <tr>
+                    <td>@item.IndexTM</td>
+                    <td>@item.IzmerValue</td>
+                    <td>@item.OcenValue</td>
+                    <td>@item.SliceID</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

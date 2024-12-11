@@ -4,7 +4,7 @@
 @using перенос_бд_на_Web.Pages.ModelMistake
 @using Microsoft.EntityFrameworkCore
 @inject ApplicationContext _modelContext
-@inject DataFilterService _dataFilterService
+@* @inject DataFilterService _dataFilterService *@
 <PageTitle>Ошибки в модели</PageTitle>
 
 @code {
@@ -20,6 +20,11 @@
     private string selectedFilePath;
 
     private string lastFilePath;
+
+
+    private bool isProcessing = false; // Указывает, идет ли операция
+    private int progress = 0; // Прогресс выполнения (в процентах)
+    private string statusMessage = "Ожидание начала операции..."; // Сообщение о текущем статусе
 
 
     protected override async Task OnInitializedAsync()
@@ -46,21 +51,44 @@
     {
         if (!string.IsNullOrWhiteSpace(selectedFilePath))
         {
+            isProcessing = true;
+            progress = 0;
+            statusMessage = "Идет поиск ошибок модели в выбранном файле...";
+            int totalSteps = 100; // Укажите общее количество шагов для расчета
+
             try
             {
-                await findErrors.CalculateModelErrorsAsync(selectedFilePath); // Передаем путь к файлу
+                findErrors = new FindErrors(_modelContext);
+                // Делегат для обновления прогресса
+                Action<int> reportProgress = step =>
+                {
+                    progress = (step * 100) / totalSteps; // Рассчитываем процент выполнения
+                    UpdateProgress(progress); // Обновляем прогресс на UI
+                };
+                await findErrors.CalculateModelErrorsAsync(selectedFilePath, totalSteps, reportProgress); // Передаем путь к файлу
                 modelErrors = await _modelContext.modelErrors.AsNoTracking().ToListAsync(); // Обновляем данные ошибок
                 filtredModelErrors = modelErrors;
+                statusMessage = "Расчет завершен!";
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Ошибка при расчете: {ex.Message}");
+            }
+            finally
+            {
+                isProcessing = false;
             }
         }
         else
         {
             Console.WriteLine("Файл не был выбран или сохранен.");
         }
+    }
+
+    private void UpdateProgress(int value)
+    {
+        progress = value;
+        InvokeAsync(StateHasChanged); // Обновляем интерфейс
     }
 
     public async Task UpdateFilePathAsync(string filePath)
@@ -172,6 +200,16 @@
 
 <button @onclick="IdentifyErrors" class="btn btn-danger mb-3">Выявить ошибки</button>
 
+@if (isProcessing)
+{
+    <div class="status-bar">
+        <p>@statusMessage</p>
+        <div class="progress-container">
+            <div class="progress-bar" style="width: @($"{progress}%");"></div>
+        </div>
+        <p>@progress%</p>
+    </div>
+}
 
 @if (showSearch)
 {
@@ -224,3 +262,25 @@ else
 {
     <p class="mt-3">Нет данных для отображения.</p>
 }
+
+<style>
+    .status-bar {
+        margin-top: 20px;
+        text-align: center;
+    }
+
+    .progress-container {
+        width: 100%;
+        background-color: #f3f3f3;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        overflow: hidden;
+        margin: 10px 0;
+    }
+
+    .progress-bar {
+        height: 20px;
+        background-color: #4caf50;
+        transition: width 0.2s;
+    }
+</style>

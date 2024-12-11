@@ -19,12 +19,21 @@ namespace перенос_бд_на_Web.Pages.ModelMistake
         public async Task OnGetAsync(string selectedFilePath)
         {
             string dirName = selectedFilePath;
-            await CalculateModelErrorsAsync(dirName);
+            int totalSteps = 100; // общее количество шагов в процессе
+            Action<int> reportProgress = step =>
+            {
+                // Здесь обновите статус бар или передайте данные в UI через SignalR
+                Console.WriteLine($"Шаг {step} из {totalSteps}");
+            };
+
+            await CalculateModelErrorsAsync(dirName, totalSteps, reportProgress);
             ErrModel = await _modelContext.modelErrors.AsNoTracking().ToListAsync();
         }
-        public async Task CalculateModelErrorsAsync(string dirName)
+        public async Task CalculateModelErrorsAsync(string dirName, int totalSteps, Action<int> reportProgress)
         {
-            
+            // Выполнение части работы
+            await Task.Delay(100); // Симуляция асинхронной операции
+
             var directory = new DirectoryInfo(dirName);
             Console.BufferHeight = 10000;
 
@@ -124,6 +133,13 @@ namespace перенос_бд_на_Web.Pages.ModelMistake
                 countPov[c] = countTarget;
                 Console.WriteLine($"{povtori[c]}\t {countPov[c]}");
             }
+
+            totalSteps = povtori.Length;
+            int currentStep = 0;
+
+            var db = _modelContext;
+
+            db.Database.ExecuteSqlRaw("TRUNCATE TABLE \"modelErrors\" RESTART IDENTITY;");
 
             for (int w = 0; w < povtori.Length; w++)
             {
@@ -290,7 +306,11 @@ namespace перенос_бд_на_Web.Pages.ModelMistake
                             break;
                     }
                 }
+                currentStep++;
+                int progress = (currentStep * 100) / totalSteps;
+                reportProgress(progress);
             }
+            
         }
 
         public static bool GetErrPosled(List<double> nKontsov, double[,] Massiv, IRastr Rastr)
@@ -430,7 +450,6 @@ namespace перенос_бд_на_Web.Pages.ModelMistake
         {
             var db = _modelContext;
 
-            db.Database.ExecuteSqlRaw("TRUNCATE TABLE \"tm\" RESTART IDENTITY;");
                 var typeMistakesInModel = new ModelErrors
                 {
                     ID = Guid.NewGuid(),
