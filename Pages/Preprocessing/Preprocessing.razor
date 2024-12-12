@@ -19,6 +19,8 @@
     private int thinningInterval = 1;
     private bool isThinning = false; // Флаг для прореживания
     private bool showDateIntervalFields = false; // Флаг для отображения полей
+    private bool isCalculating = false; // Флаг для отображения прогресса
+    private int progress = 0; // Прогресс выполнения
 
     private List<TMValues> filteredData;
 
@@ -46,6 +48,8 @@
             Console.WriteLine("Нет данных для расчёта.");
             return;
         }
+        isCalculating = true;
+        progress = 0;
 
         try
         {
@@ -58,10 +62,16 @@
                 .Select(s => s.SlicePath)
                 .ToListAsync();
 
+            int totalSlices = slicePaths.Count;
+            int processedSlices = 0;
+
             foreach (var path in slicePaths)
             {
                 CalculationDTI dtiCalculation = new CalculationDTI();
                 await Task.Run(() => dtiCalculation.CalculateDTIAndPTI(path, _context));
+                processedSlices++;
+                progress = (int)((processedSlices / (double)totalSlices) * 100);
+                StateHasChanged(); // Обновление UI
             }
 
             Console.WriteLine("Расчёт завершён.");
@@ -69,6 +79,12 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Ошибка расчёта: {ex.Message}");
+        }
+        finally
+        {
+            isCalculating = false;
+            progress = 100; // Устанавливаем прогресс на 100%
+            StateHasChanged();   
         }
     }
 
@@ -105,4 +121,15 @@
         Рассчитать ПТИ и ДТИ для выбранного интервала
     </button>
 </div>
+
+@if (isCalculating)
+{
+    <div class="mt-4">
+        <h5>Прогресс выполнения:</h5>
+        <div class="progress">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: @progress%;"></div>
+        </div>
+        <p>@progress% завершено</p>
+    </div>
+}
 
