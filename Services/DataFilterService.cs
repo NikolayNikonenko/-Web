@@ -77,9 +77,18 @@ namespace перенос_бд_на_Web.Services
 
 
         // Метод для прореживания данных: выборка каждого n-го элемента (например, каждая 5-я запись)
-        private List<TMValues> ApplyThinning(List<TMValues> data, int step)
+        private List<TMValues> ApplyThinning(List<TMValues> data, int interval)
         {
-            return data.Where((item, index) => index % step == 0).ToList();
+            // Группируем записи по уникальным значениям NumberOfSrez
+            var groupedBySrez = data.GroupBy(t => t.NumberOfSrez);
+
+            // Применяем прореживание: выбираем записи только для каждого i-того среза
+            var thinnedData = groupedBySrez
+                .Where((group, index) => index % interval == 0) // Учитываем только каждые interval-группы
+                .SelectMany(group => group) // Разворачиваем записи обратно в список
+                .ToList();
+
+            return thinnedData;
         }
     }
 }

@@ -38,6 +38,40 @@
     {
         showDateIntervalFields = !showDateIntervalFields; // Переключение видимости
     }
+
+    private async Task CalculateDTIForSelectedInterval()
+    {
+        if (filteredData == null || !filteredData.Any())
+        {
+            Console.WriteLine("Нет данных для расчёта.");
+            return;
+        }
+
+        try
+        {
+            // Предполагаем, что каждый срез имеет путь или идентификатор
+            var sliceNames = filteredData.Select(data => data.NumberOfSrez).Distinct().ToList();
+
+            // Извлекаем соответствующие пути из таблицы Slices
+            var slicePaths = await _context.slices
+                .Where(s => sliceNames.Contains(s.SliceName) && s.experiment_label == "Входные данные")
+                .Select(s => s.SlicePath)
+                .ToListAsync();
+
+            foreach (var path in slicePaths)
+            {
+                CalculationDTI dtiCalculation = new CalculationDTI();
+                await Task.Run(() => dtiCalculation.CalculateDTIAndPTI(path, _context));
+            }
+
+            Console.WriteLine("Расчёт завершён.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка расчёта: {ex.Message}");
+        }
+    }
+
 }
 
 @if (showDateIntervalFields)
@@ -66,28 +100,9 @@
     <button class="btn btn-primary mt-2" @onclick="ApplyFilters">Применить заданный интервал</button>
 }
 
-@if (filteredData != null)
-{
-    <h4>Результаты фильтрации:</h4>
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>IndexTM</th>
-                <th>IzmerValue</th>
-                <th>OcenValue</th>
-                <th>SliceID</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var item in filteredData)
-            {
-                <tr>
-                    <td>@item.IndexTM</td>
-                    <td>@item.IzmerValue</td>
-                    <td>@item.OcenValue</td>
-                    <td>@item.SliceID</td>
-                </tr>
-            }
-        </tbody>
-    </table>
-}
+<div>
+    <button class="btn btn-success mt-2" @onclick="CalculateDTIForSelectedInterval">
+        Рассчитать ПТИ и ДТИ для выбранного интервала
+    </button>
+</div>
+

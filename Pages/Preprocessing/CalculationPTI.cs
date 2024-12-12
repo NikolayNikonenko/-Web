@@ -1,345 +1,568 @@
 ﻿using ASTRALib;
+using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
+using перенос_бд_на_Web.Models;
 
 namespace перенос_бд_на_Web.Pages.Preprocessing
 {
     public class CalculationPTI
     {
-        static void Main(string[] args)
+        private string dateNow = DateTime.Now.ToString("yyyy_MM_dd");
+
+        public void CalculatePTI( IRastr Rastr, string dirName, ApplicationContext context)
         {
-            string dirName = "D:\\учеба\\магистратура\\диплом\\правильные срезы\\до корр точно сотка";
-            var directory = new DirectoryInfo(dirName);
-            DirectoryInfo[] dirs = directory.GetDirectories();
-            foreach (DirectoryInfo dir in dirs)
+
+            string PathFile = ($"{dirName}");
+            // Обращение к таблице ТИ:каналы
+            ITable _tableTIChannel = (ITable)Rastr.Tables.Item("ti");
+            // Обращение к колонке № ТМ
+            ICol _numberTM = (ICol)_tableTIChannel.Cols.Item("Num");
+            // Обращение к колонке значений
+            ICol _znachTm = (ICol)_tableTIChannel.Cols.Item("ti_val");
+            // Обращение к колонке тип
+            ICol tip = (ICol)_tableTIChannel.Cols.Item("type");
+            // Обращение к колонке id1
+            ICol _id1 = (ICol)_tableTIChannel.Cols.Item("id1");
+            // Обращение к коду в ОС
+            // Обращение к колонке id2
+            ICol _id2 = (ICol)_tableTIChannel.Cols.Item("id2");
+            // Обращение к коду в ОС
+            ICol _cod = (ICol)_tableTIChannel.Cols.Item("cod_oc");
+            // Обращение к колонке привязка
+            ICol _privyazka = (ICol)_tableTIChannel.Cols.Item("prv_num");
+            // Обращение к колонке название телеметрии
+            ICol namePTI = (ICol)_tableTIChannel.Cols.Item("name");
+            // Обращение к колонке модель учета
+            ICol _model = (ICol)_tableTIChannel.Cols.Item("tip_ti");
+            // Обращение к колонке цена 1
+            ICol _price1 = (ICol)_tableTIChannel.Cols.Item("price1");
+            // Обращение к колонке цена 2
+            ICol _price2 = (ICol)_tableTIChannel.Cols.Item("price2");
+
+
+
+            // Обращение к таблице узлы
+            ITable _nodes = (ITable)Rastr.Tables.Item("node");
+            // Обращение к колонке номер узла
+            ICol _numberNode = (ICol)_nodes.Cols.Item("ny");
+            // Обращение к колонке Pн
+            ICol Pn = (ICol)_nodes.Cols.Item("pn");
+            // Обращение к колонке Qн
+            ICol Qn = (ICol)_nodes.Cols.Item("qn");
+            // Обращение к колонке Pг
+            ICol Pg = (ICol)_nodes.Cols.Item("pg");
+            // Обращение к колонке Pг
+            ICol Qg = (ICol)_nodes.Cols.Item("qg");
+            // Обращение к колонке Pн есть
+            ICol Pn_exist = (ICol)_nodes.Cols.Item("exist_load");
+            // Обращение к колонке Pг есть
+            ICol Pg_exist = (ICol)_nodes.Cols.Item("exist_gen");
+            // Обращение к колонке статус узла
+            ICol statusNode = (ICol)_nodes.Cols.Item("sta");
+            // Обращение к колонке тип узла
+            ICol _tipUzla = (ICol)_nodes.Cols.Item("tip");
+            // Обращение к колонке название узла
+            ICol nameUzel = (ICol)_nodes.Cols.Item("name");
+
+            // Обращение к таблице Генераторы УР
+            ITable _generatori = (ITable)Rastr.Tables.Item("Generator");
+            ICol NumberUzelInGenerators = (ICol)_generatori.Cols.Item("Node");
+
+            // Обращение к таблице реакторы
+            ITable _reactors = (ITable)Rastr.Tables.Item("Reactors");
+            // Обращение к колонке номер узла в реакторах
+            ICol numbeNodeInReactors = (ICol)_reactors.Cols.Item("Id1");
+            // Обращение к колонке значения расчетной реактивной мощности
+            ICol qRashReactor = (ICol)_reactors.Cols.Item("Qr");
+            // Обращение к колонке статус реактора
+            ICol statusReactor = (ICol)_reactors.Cols.Item("sta");
+            // Обращение к колонке тип реактора (начало/конец)
+            ICol tip_Reactor = (ICol)_reactors.Cols.Item("tip");
+
+            int schetUzli = _nodes.Size;
+            double numberNode;
+            bool sta;
+            double pg_est;
+            double pn_est;
+            double pn;
+            double qn;
+            double pg;
+            double qg;
+            string priv;
+            double znachTMPNach;
+            double znachTMQNach;
+            double znachTMPKon;
+            double znachTMQKon;
+            double znachTMPNachForGen;
+            double znachTMQNachForGen;
+            double znachTMPKonForGen;
+            double znachTMQKonForGen;
+            int tipUzla;
+            double znachPNagInUzel;
+            double znachQNagInUzel;
+            double znachQInReactors = 0;
+            double znachQInReactorsForGen = 0;
+            int _nachZnachIdentificator = 9500000;
+            int modelTi;
+            string nameNode;
+            List<double> numbersNag = new List<double>();
+            List<double> numbersGen = new List<double>();
+            List<double> znachPNagrForGenPTI = new List<double>();
+            List<double> znachQNagrForGenPTI = new List<double>();
+            List<string> nodeNamesNag = new List<string>();
+            List<string> nodeNamesGen = new List<string>();
+
+            for (int numTM = 0; numTM < schetUzli; numTM++)
             {
-                Regex regex = new Regex(@"\b(\d\d_\d\d_\d\d)");
+                sta = (bool)statusNode.get_ZN(numTM);
+                numberNode = (int)_numberNode.get_ZN(numTM);
+                pg_est = (int)Pg_exist.get_ZN(numTM);
+                pn_est = (int)Pn_exist.get_ZN(numTM);
+                pn = (double)Pn.get_ZN(numTM);
+                qn = (double)Qn.get_ZN(numTM);
+                pg = (double)Pg.get_ZN(numTM);
+                qg = (double)Qg.get_ZN(numTM);
+                tipUzla = (int)_tipUzla.get_ZN(numTM);
+                znachPNagInUzel = (double)Pn.get_ZN(numTM);
+                znachQNagInUzel = (double)Qn.get_ZN(numTM);
+                nameNode = (string)nameUzel.get_ZN(numTM);
 
-                Match match1 = regex.Match(Convert.ToString(dir));
-                foreach (FileInfo pathFile in dir.GetFiles("roc_debug_after_OC*"))
+
+                if ((sta != true) && (pn_est == 0) && ((pn != 0) && (qn != 0)))
                 {
+                    numbersNag.Add(numberNode);
+                    nodeNamesNag.Add(nameNode);
 
-                    Console.WriteLine(pathFile);
-                    Console.WriteLine(dir);
-
-                    string PathFile = ($"{pathFile}");
-                    // Создаем указатель на экземпляр RastrWin и его запуск
-                    IRastr Rastr = new Rastr();
-                    // Загружаем файл с режимом
-                    Rastr.Load(RG_KOD.RG_REPL, PathFile, "");
-                    // Обращение к таблице ТИ:каналы
-                    ITable _tableTIChannel = (ITable)Rastr.Tables.Item("ti");
-                    // Обращение к колонке № ТМ
-                    ICol _numberTM = (ICol)_tableTIChannel.Cols.Item("Num");
-                    // Обращение к колонке значений
-                    ICol _znachTm = (ICol)_tableTIChannel.Cols.Item("ti_val");
-                    // Обращение к колонке тип
-                    ICol tip = (ICol)_tableTIChannel.Cols.Item("type");
-                    // Обращение к колонке id1
-                    ICol _id1 = (ICol)_tableTIChannel.Cols.Item("id1");
-                    // Обращение к коду в ОС
-                    // Обращение к колонке id2
-                    ICol _id2 = (ICol)_tableTIChannel.Cols.Item("id2");
-                    // Обращение к коду в ОС
-                    ICol _cod = (ICol)_tableTIChannel.Cols.Item("cod_oc");
-                    // Обращение к колонке привязка
-                    ICol _privyazka = (ICol)_tableTIChannel.Cols.Item("prv_num");
-
-
-                    // Обращение к таблице узлы
-                    ITable _nodes = (ITable)Rastr.Tables.Item("node");
-                    // Обращение к колонке номер узла
-                    ICol _numberNode = (ICol)_nodes.Cols.Item("ny");
-                    // Обращение к колонке Pн
-                    ICol Pn = (ICol)_nodes.Cols.Item("pn");
-                    // Обращение к колонке Qн
-                    ICol Qn = (ICol)_nodes.Cols.Item("qn");
-                    // Обращение к колонке Pг
-                    ICol Pg = (ICol)_nodes.Cols.Item("pg");
-                    // Обращение к колонке Pг
-                    ICol Qg = (ICol)_nodes.Cols.Item("qg");
-                    // Обращение к колонке Pн есть
-                    ICol Pn_exist = (ICol)_nodes.Cols.Item("exist_load");
-                    // Обращение к колонке Pг есть
-                    ICol Pg_exist = (ICol)_nodes.Cols.Item("exist_gen");
-                    // Обращение к колонке статус узла
-                    ICol statusNode = (ICol)_nodes.Cols.Item("sta");
-                    // Обращение к колонке тип узла
-                    ICol _tipUzla = (ICol)_nodes.Cols.Item("tip");
-
-                    // Обращение к таблице Генераторы УР
-                    ITable _generatori = (ITable)Rastr.Tables.Item("Generator");
-                    ICol NumberUzelInGenerators = (ICol)_generatori.Cols.Item("Node");
-
-                    // Обращение к таблице реакторы
-                    ITable _reactors = (ITable)Rastr.Tables.Item("Reactors");
-                    // обращение к колонке номер узла в реакторах
-
-
-                    int schetUzli = _nodes.Size;
-                    double numberNode;
-                    bool sta;
-                    double pg_est;
-                    double pn_est;
-                    double pn;
-                    double qn;
-                    double pg;
-                    double qg;
-                    string priv;
-                    double znachTMPNach;
-                    double znachTMQNach;
-                    double znachTMPKon;
-                    double znachTMQKon;
-                    double znachTMPNachForGen;
-                    double znachTMQNachForGen;
-                    double znachTMPKonForGen;
-                    double znachTMQKonForGen;
-                    int tipUzla;
-                    double znachPNagInUzel;
-                    double znachQNagInUzel;
-                    List<double> numbersNag = new List<double>();
-                    List<double> numbersGen = new List<double>();
-                    List<double> znachPNagrForGenPTI = new List<double>();
-                    List<double> znachQNagrForGenPTI = new List<double>();
-
-
-                    for (int numTM = 0; numTM < schetUzli; numTM++)
+                    //Console.WriteLine($"{numberNode}\t\t{sta}\t\t{pn_est}\t\t{pg_est}");
+                }
+                if ((sta != true) && (pg_est == 0) && ((pg != 0) && (qg != 0)))
+                {
+                    numbersGen.Add(numberNode);
+                    znachPNagrForGenPTI.Add(znachPNagInUzel);
+                    znachQNagrForGenPTI.Add(znachQNagInUzel);
+                    nodeNamesGen.Add(nameNode);
+                }
+            }
+            for (int q = 0; q < numbersNag.Count; q++)
+            {
+                List<double> sumPNach = new List<double>();
+                List<double> sumPKon = new List<double>();
+                List<double> sumQNach = new List<double>();
+                List<double> sumQKon = new List<double>();
+                List<double> sumQInReactors = new List<double>();
+                List<double> nodesNag = new List<double>() { numbersNag[q] };
+                znachQInReactors = 0;
+                int countNachTM = 0;
+                int countKonTM = 0;
+                int countTM = 0;
+                for (int i = 0; i < 2; i++)
+                {
+                    GetNodes(ref nodesNag, Rastr, 0);
+                    GetNodes(ref nodesNag, Rastr, 1);
+                }
+                for (int b = 0; b < nodesNag.Count; b++)
+                {
+                    _tableTIChannel.SetSel($"id1={nodesNag[b]}");
+                    int n = _tableTIChannel.FindNextSel[-1];
+                    while (n != -1)
                     {
-                        sta = (bool)statusNode.get_ZN(numTM);
-                        numberNode = (int)_numberNode.get_ZN(numTM);
-                        pg_est = (int)Pg_exist.get_ZN(numTM);
-                        pn_est = (int)Pn_exist.get_ZN(numTM);
-                        pn = (double)Pn.get_ZN(numTM);
-                        qn = (double)Qn.get_ZN(numTM);
-                        pg = (double)Pg.get_ZN(numTM);
-                        qg = (double)Qg.get_ZN(numTM);
-                        tipUzla = (int)_tipUzla.get_ZN(numTM);
-                        znachPNagInUzel = (double)Pn.get_ZN(numTM);
-                        znachQNagInUzel = (double)Qn.get_ZN(numTM);
-
-
-                        if ((sta != true) && (pn_est == 0) && ((pn != 0) && (qn != 0)) && (tipUzla == 1))
+                        priv = (string)_privyazka.get_ZN(n);
+                        switch (priv)
                         {
-                            numbersNag.Add(numberNode);
-
-                            //Console.WriteLine($"{numberNode}\t\t{sta}\t\t{pn_est}\t\t{pg_est}");
+                            case "Pнач":
+                                {
+                                    znachTMPNach = (double)_znachTm.get_ZN(n);
+                                    sumPNach.Add(znachTMPNach);
+                                    countNachTM++;
+                                    break;
+                                }
+                            case "Qнач":
+                                {
+                                    znachTMQNach = (double)_znachTm.get_ZN(n);
+                                    sumQNach.Add(znachTMQNach);
+                                    break;
+                                }
                         }
-                        if ((sta != true) && (pg_est == 0) && ((pg != 0) && (qg != 0)))
-                        {
-                            numbersGen.Add(numberNode);
-                            znachPNagrForGenPTI.Add(znachPNagInUzel);
-                            znachQNagrForGenPTI.Add(znachQNagInUzel);
-
-                        }
-
+                        n = _tableTIChannel.FindNextSel[n];
                     }
-                    for (int q = 0; q < numbersNag.Count; q++)
+                    _tableTIChannel.SetSel($"id2={nodesNag[b]}");
+                    int kon = _tableTIChannel.FindNextSel[-1];
+                    while (kon != -1)
                     {
-                        List<double> sumPNach = new List<double>();
-                        List<double> sumPKon = new List<double>();
-                        List<double> sumQNach = new List<double>();
-                        List<double> sumQKon = new List<double>();
-
-                        int countNachTM = 0;
-                        int countKonTM = 0;
-                        _tableTIChannel.SetSel($"id1={numbersNag[q]}");
-                        int n = _tableTIChannel.FindNextSel[-1];
-                        while (n != -1)
+                        priv = (string)_privyazka.get_ZN(kon);
+                        switch (priv)
                         {
-                            priv = (string)_privyazka.get_ZN(n);
-                            switch (priv)
-                            {
-                                case "Pнач":
-                                    {
-                                        znachTMPNach = (double)_znachTm.get_ZN(n);
-                                        sumPNach.Add(znachTMPNach);
-                                        countNachTM++;
-                                        break;
-                                    }
-                                case "Qнач":
-                                    {
-                                        znachTMQNach = (double)_znachTm.get_ZN(n);
-                                        sumQNach.Add(znachTMQNach);
-                                        break;
-                                    }
-                            }
-                            n = _tableTIChannel.FindNextSel[n];
+                            case "Pкон":
+                                {
+                                    znachTMPKon = (double)_znachTm.get_ZN(kon);
+                                    sumPKon.Add(znachTMPKon);
+                                    countKonTM++;
+                                    break;
+                                }
+                            case "Qкон":
+                                {
+                                    znachTMQKon = (double)_znachTm.get_ZN(kon);
+                                    sumQKon.Add(znachTMQKon);
+                                    break;
+                                }
                         }
-                        _tableTIChannel.SetSel($"id2={numbersNag[q]}");
-                        int kon = _tableTIChannel.FindNextSel[-1];
-                        while (kon != -1)
-                        {
-
-                            priv = (string)_privyazka.get_ZN(kon);
-                            switch (priv)
-                            {
-                                case "Pкон":
-                                    {
-                                        znachTMPKon = (double)_znachTm.get_ZN(kon);
-                                        sumPKon.Add(znachTMPKon);
-                                        countKonTM++;
-                                        break;
-                                    }
-                                case "Qкон":
-                                    {
-                                        znachTMQKon = (double)_znachTm.get_ZN(kon);
-                                        sumQKon.Add(znachTMQKon);
-                                        break;
-                                    }
-                            }
-                            kon = _tableTIChannel.FindNextSel[kon];
-                        }
-                        int countTM = countNachTM + countKonTM;
-                        if (!GetCountOfConnections(Rastr, q, numbersNag, countTM))
-                        {
-                            double ptiPn = (double)(sumPNach.Sum() + sumPKon.Sum());
-                            double ptiQn = (double)(sumQNach.Sum() + sumQKon.Sum());
-                            _nodes.SetSel($"ny={numbersNag[q]}");
-                            int finalvalPn = _nodes.FindNextSel[-1];
-                            Pn.set_ZN(finalvalPn, ptiPn);
-                            Qn.set_ZN(finalvalPn, ptiQn);
-                            //Pn_exist.set_ZN(finalvalPn, 1);
-
-                        }
-                        else
-                        {
-                            Console.WriteLine("Расчет ПТИ невозможен ввиду отсутствия необходимой телеметрии");
-                        }
-
-
+                        kon = _tableTIChannel.FindNextSel[kon];
                     }
-                    for (int s = 0; s < numbersGen.Count; s++)
+                    countTM = countNachTM + countKonTM;
+                }
+                if (GetCountOfConnections(Rastr, nodesNag, countTM))
+                {
+                    continue;
+                }
+                for (int b = 0; b < nodesNag.Count; b++)
+                {
+                    _reactors.SetSel($"Id1={nodesNag[b]}");
+                    int nReactorInNach = _reactors.FindNextSel[-1];
+                    if (nReactorInNach != -1)
                     {
-                        List<double> sumPNachForGen = new List<double>();
-                        List<double> sumPKonForGen = new List<double>();
-                        List<double> sumQNachForGen = new List<double>();
-                        List<double> sumQKonForGen = new List<double>();
-                        int countNachTMForGen = 0;
-                        int countKonTMForGen = 0;
-                        _tableTIChannel.SetSel($"id1={numbersGen[s]}");
-                        int nGen = _tableTIChannel.FindNextSel[-1];
-                        while (nGen != -1)
+                        while (nReactorInNach != -1)
                         {
-                            priv = (string)_privyazka.get_ZN(nGen);
-                            switch (priv)
+                            if (((bool)statusReactor.get_ZN(nReactorInNach) == false) &&
+                                (((int)tip_Reactor.get_ZN(nReactorInNach) == 1)
+                                || ((int)tip_Reactor.get_ZN(nReactorInNach) == 0)))
                             {
-                                case "Pнач":
-                                    {
-                                        znachTMPNachForGen = (double)_znachTm.get_ZN(nGen);
-                                        sumPNachForGen.Add(znachTMPNachForGen);
-                                        countNachTMForGen++;
-                                        break;
-                                    }
-                                case "Qнач":
-                                    {
-                                        znachTMQNachForGen = (double)_znachTm.get_ZN(nGen);
-                                        sumQNachForGen.Add(znachTMQNachForGen);
-                                        break;
-                                    }
+                                znachQInReactors = Convert.ToDouble(qRashReactor.get_ZN(nReactorInNach));
+                                sumQInReactors.Add(znachQInReactors);
                             }
-                            nGen = _tableTIChannel.FindNextSel[nGen];
-                        }
-                        _tableTIChannel.SetSel($"id2={numbersGen[s]}");
-                        int konGen = _tableTIChannel.FindNextSel[-1];
-                        while (konGen != -1)
-                        {
-
-                            priv = (string)_privyazka.get_ZN(konGen);
-                            switch (priv)
-                            {
-                                case "Pкон":
-                                    {
-                                        znachTMPKonForGen = (double)_znachTm.get_ZN(konGen);
-                                        sumPKonForGen.Add(znachTMPKonForGen);
-                                        countKonTMForGen++;
-                                        break;
-                                    }
-                                case "Qкон":
-                                    {
-                                        znachTMQKonForGen = (double)_znachTm.get_ZN(konGen);
-                                        sumQKonForGen.Add(znachTMQKonForGen);
-                                        break;
-                                    }
-                            }
-                            konGen = _tableTIChannel.FindNextSel[konGen];
-                        }
-                        int countTMForGen = countNachTMForGen + countKonTMForGen;
-                        if (!GetCountOfConnections(Rastr, s, numbersGen, countTMForGen))
-                        {
-                            double ptiPg = ((double)(sumPNachForGen.Sum() + sumPKonForGen.Sum()) - znachPNagrForGenPTI[s]) * -1;
-                            double ptiQg = ((double)(sumQNachForGen.Sum() + sumQKonForGen.Sum()) - znachQNagrForGenPTI[s]) * -1;
-                            _nodes.SetSel($"ny={numbersGen[s]}");
-                            int finalvalPg = _nodes.FindNextSel[-1];
-                            Pg.set_ZN(finalvalPg, ptiPg);
-                            Qg.set_ZN(finalvalPg, ptiQg);
-                            //Pg_exist.set_ZN(finalvalPg, 1);
-                        }
-                        else
-                        {
-                            Console.WriteLine("Расчет ПТИ невозможен ввиду отсутствия необходимой телеметрии");
+                            nReactorInNach = _reactors.FindNextSel[nReactorInNach];
                         }
                     }
-                    Match match = regex.Match(Convert.ToString(dir));
-                    string SaveFile = @"D:\учеба\магистратура\диплом\правильные срезы\тест ПТИ\безнадега\До корр с ПТИ с изменением статуса и фильтрацией";
-                    string subpath = string.Concat(match.ToString(), " после корреции");
 
-                    DirectoryInfo dirInfo = new DirectoryInfo(SaveFile);
-                    if (!dirInfo.Exists)
+
+                    _reactors.SetSel($"Id2={nodesNag[b]}");
+                    int nReactorInKon = _reactors.FindNextSel[-1];
+                    if (nReactorInKon != -1)
                     {
-                        dirInfo.Create();
+                        while (nReactorInKon != -1)
+                        {
+                            if (((bool)statusReactor.get_ZN(nReactorInKon) == false) && ((int)tip_Reactor.get_ZN(nReactorInKon) == 2))
+                            {
+                                znachQInReactors = (double)qRashReactor.get_ZN(nReactorInKon);
+                                sumQInReactors.Add(znachQInReactors);
+                            }
+                            nReactorInKon = _reactors.FindNextSel[nReactorInKon];
+                        }
                     }
-                    dirInfo.CreateSubdirectory(subpath);
+                }
+                double ptiPn = (double)(sumPNach.Sum() + sumPKon.Sum());
+                double ptiQn = (double)(sumQNach.Sum() + sumQKon.Sum() - sumQInReactors.Sum());
 
-                    // Фильтр
-                    COMCKLib.ITI m_TI = new COMCKLib.TI();
-                    object SARes = null;
-                    int Res = 0;
-                    Res = m_TI.FiltrTI_1(Rastr, ref SARes);
 
-                    Rastr.rgm("");
-                    Rastr.opf("s");
-                    string FullSaveFile = string.Concat(SaveFile, "\\", subpath, "\\", subpath, ".rg2");
-                    Rastr.Save(FullSaveFile, "");
+                if (ptiPn != 0)
+                {
+                    GetPTI(Rastr, ptiPn, q, numbersNag, nodeNamesNag, _nachZnachIdentificator, "Pнаг", 4);
+                    _nachZnachIdentificator++;
+                }
+                if (ptiQn != 0)
+                {
+                    GetPTI(Rastr, ptiQn, q, numbersNag, nodeNamesNag, _nachZnachIdentificator, "Qнаг", 6);
+                    _nachZnachIdentificator++;
                 }
 
 
+                _nodes.SetSel($"ny={numbersNag[q]}");
+                int finalvalPn = _nodes.FindNextSel[-1];
+
+                Pn_exist.set_ZN(finalvalPn, 1);
+                Console.WriteLine($"Проведен расчет ПТИ нагрузки для ТМ № {numbersNag[q]}");
+                //                        else
+                //{
+                //    Console.WriteLine($"Для ТМ {numbersNag[q]} Расчет ПТИ для нагрузки невозможен ввиду отсутствия необходимой телеметрии присоединений");
+                //}
+
+
+            }
+            for (int s = 0; s < numbersGen.Count; s++)
+            {
+                List<double> sumPNachForGen = new List<double>();
+                List<double> sumPKonForGen = new List<double>();
+                List<double> sumQNachForGen = new List<double>();
+                List<double> sumQKonForGen = new List<double>();
+                List<double> sumQInReactorsForGen = new List<double>();
+                List<double> nodesGen = new List<double>() { numbersGen[s] };
+                znachQInReactorsForGen = 0;
+                int countNachTMForGen = 0;
+                int countKonTMForGen = 0;
+                double ptiPg = 0;
+                double ptiQg = 0;
+                int countTMForGen = 0;
+                for (int i = 0; i < 2; i++)
+                {
+                    GetNodes(ref nodesGen, Rastr, 0);
+                    GetNodes(ref nodesGen, Rastr, 1);
+                }
+                for (int b = 0; b < nodesGen.Count; b++)
+                {
+                    _tableTIChannel.SetSel($"id1={nodesGen[b]}");
+                    int nGen = _tableTIChannel.FindNextSel[-1];
+                    while (nGen != -1)
+                    {
+                        priv = (string)_privyazka.get_ZN(nGen);
+                        switch (priv)
+                        {
+                            case "Pнач":
+                                {
+                                    znachTMPNachForGen = (double)_znachTm.get_ZN(nGen);
+                                    sumPNachForGen.Add(znachTMPNachForGen);
+                                    countNachTMForGen++;
+                                    break;
+                                }
+                            case "Qнач":
+                                {
+                                    znachTMQNachForGen = (double)_znachTm.get_ZN(nGen);
+                                    sumQNachForGen.Add(znachTMQNachForGen);
+                                    break;
+                                }
+                        }
+                        nGen = _tableTIChannel.FindNextSel[nGen];
+                    }
+                    _tableTIChannel.SetSel($"id2={nodesGen[b]}");
+                    int konGen = _tableTIChannel.FindNextSel[-1];
+                    while (konGen != -1)
+                    {
+
+                        priv = (string)_privyazka.get_ZN(konGen);
+                        switch (priv)
+                        {
+                            case "Pкон":
+                                {
+                                    znachTMPKonForGen = (double)_znachTm.get_ZN(konGen);
+                                    sumPKonForGen.Add(znachTMPKonForGen);
+                                    countKonTMForGen++;
+                                    break;
+                                }
+                            case "Qкон":
+                                {
+                                    znachTMQKonForGen = (double)_znachTm.get_ZN(konGen);
+                                    sumQKonForGen.Add(znachTMQKonForGen);
+                                    break;
+                                }
+                        }
+                        konGen = _tableTIChannel.FindNextSel[konGen];
+                    }
+                    countTMForGen = countNachTMForGen + countKonTMForGen;
+                }
+                if (GetCountOfConnections(Rastr, nodesGen, countTMForGen))
+                {
+                    continue;
+                }
+                for (int b = 0; b < nodesGen.Count; b++)
+                {
+                    _reactors.SetSel($"Id1={nodesGen[b]}");
+                    int nReactorInNachForGen = _reactors.FindNextSel[-1];
+                    if (nReactorInNachForGen != -1)
+                    {
+                        while (nReactorInNachForGen != -1)
+                        {
+                            if (((bool)statusReactor.get_ZN(nReactorInNachForGen) == false)
+                                && (((int)tip_Reactor.get_ZN(nReactorInNachForGen) == 1)
+                                || ((int)tip_Reactor.get_ZN(nReactorInNachForGen) == 0)))
+                            {
+                                znachQInReactorsForGen = (double)qRashReactor.get_ZN(nReactorInNachForGen);
+                                sumQInReactorsForGen.Add(znachQInReactorsForGen);
+                            }
+                            nReactorInNachForGen = _reactors.FindNextSel[nReactorInNachForGen];
+                        }
+                    }
+
+                    _reactors.SetSel($"Id2={nodesGen[b]}");
+                    int nReactorInKonForGen = _reactors.FindNextSel[-1];
+                    if (nReactorInKonForGen != -1)
+                    {
+                        while (nReactorInKonForGen != -1)
+                        {
+                            if (((bool)statusReactor.get_ZN(nReactorInKonForGen) == false) && ((int)tip_Reactor.get_ZN(nReactorInKonForGen) == 2))
+                            {
+                                znachQInReactorsForGen = (double)qRashReactor.get_ZN(nReactorInKonForGen);
+                                sumQInReactorsForGen.Add(znachQInReactorsForGen);
+                            }
+                            nReactorInKonForGen = _reactors.FindNextSel[nReactorInKonForGen];
+                        }
+                    }
+                }
+
+                ptiPg = ((double)(sumPNachForGen.Sum() + sumPKonForGen.Sum()) - znachPNagrForGenPTI[s]) * -1;
+                ptiQg = ((double)(sumQNachForGen.Sum() + sumQKonForGen.Sum()) - znachQNagrForGenPTI[s] - sumQInReactorsForGen.Sum()) * -1;
+
+                if (ptiPg != 0)
+                {
+                    GetPTI(Rastr, ptiPg, s, numbersGen, nodeNamesGen, _nachZnachIdentificator, "Pген", 3);
+                    _nachZnachIdentificator++;
+                }
+                if (ptiQg != 0)
+                {
+                    GetPTI(Rastr, ptiQg, s, numbersGen, nodeNamesGen, _nachZnachIdentificator, "Qген", 5);
+                    _nachZnachIdentificator++;
+                }
+
+                _nodes.SetSel($"ny={numbersGen[s]}");
+                int finalvalPg = _nodes.FindNextSel[-1];
+
+                Pg_exist.set_ZN(finalvalPg, 1);
+                Console.WriteLine($"Для ТМ № {numbersGen[s]} произведен расчет ПТИ для генерации");
+
+            }
+
+            var sliceName = context.slices
+                .Where(s => s.SlicePath == dirName)
+                .Select(s => s.SliceName)
+                .FirstOrDefault();
+
+            string SaveFile = @"D:\учеба\магистратура\3 курс\диплом ит\мое\тесты файлов с предобработкой";
+
+            // Фильтр
+            COMCKLib.ITI m_TI = new COMCKLib.TI();
+            object SARes = null;
+            int Res = 0;
+            Res = m_TI.FiltrTI_1(Rastr, ref SARes);
+
+            Rastr.opf("s");
+            string FullSaveFile = Path.Combine(SaveFile, dateNow, sliceName, $"{sliceName}.rg2");
+            string directoryPath = Path.GetDirectoryName(FullSaveFile);
+            if (!Directory.Exists(directoryPath))
+            {
+                Directory.CreateDirectory(directoryPath);
+            }
+
+            Rastr.Save(FullSaveFile, "");
+        }
+
+        public static void GetNodes(ref List<double> arrNachVetv, IRastr Rastr, int status)
+        {
+            // Обращение к таблице ветви
+            ITable _table_vetvi = (ITable)Rastr.Tables.Item("vetv");
+            // Обращение к колонке N_кон
+            ICol N_kon = (ICol)_table_vetvi.Cols.Item("iq");
+            // Обращение к колонке тип ветви
+            ICol tip_vetvi = (ICol)_table_vetvi.Cols.Item("tip");
+            // Обращение к колонке N_нач
+            ICol N_nach = (ICol)_table_vetvi.Cols.Item("ip");
+            if (status == 0)
+            {
+                for (int i = 0; i < arrNachVetv.Count; i++)
+                {
+                    _table_vetvi.SetSel($"ip = {(int)(arrNachVetv[i])}");
+                    int n = _table_vetvi.FindNextSel[-1];
+                    while (n != -1)
+                    {
+                        int buffuzel = (int)N_kon.get_ZN(n);
+                        if (((int)tip_vetvi.get_ZN(n) == 2) && (arrNachVetv.IndexOf(buffuzel) == -1))
+                        {
+                            arrNachVetv.Add(buffuzel);
+
+                        }
+                        n = _table_vetvi.FindNextSel[n];
+                    }
+                }
+            }
+            if (status == 1)
+            {
+                for (int i = 0; i < arrNachVetv.Count; i++)
+                {
+                    _table_vetvi.SetSel($"iq = {(int)(arrNachVetv[i])}");
+                    int n = _table_vetvi.FindNextSel[-1];
+                    while (n != -1)
+                    {
+                        int buffuzel = (int)N_nach.get_ZN(n);
+                        if (((int)tip_vetvi.get_ZN(n) == 2) && (arrNachVetv.IndexOf(buffuzel) == -1))
+                        {
+                            arrNachVetv.Add(buffuzel);
+
+                        }
+                        n = _table_vetvi.FindNextSel[n];
+                    }
+                }
             }
         }
-        public static bool GetCountOfConnections(IRastr Rastr, int q, List<double> numbers, int countTM)
+        public static void GetPTI(IRastr Rastr, double ptiPn, int q, List<double> numbersNag, List<string> nodeNamesNag, int _nachZnachIdentificator, string priv, int privint)
+        {
+            // Обращение к таблице ТИ:каналы
+            ITable _tableTIChannel = (ITable)Rastr.Tables.Item("ti");
+            // Обращение к колонке № ТМ
+            ICol _numberTM = (ICol)_tableTIChannel.Cols.Item("Num");
+            // Обращение к колонке значений
+            ICol _znachTm = (ICol)_tableTIChannel.Cols.Item("ti_val");
+            // Обращение к колонке тип
+            ICol tip = (ICol)_tableTIChannel.Cols.Item("type");
+            // Обращение к колонке id1
+            ICol _id1 = (ICol)_tableTIChannel.Cols.Item("id1");
+            // Обращение к коду в ОС
+            // Обращение к колонке id2
+            ICol _id2 = (ICol)_tableTIChannel.Cols.Item("id2");
+            // Обращение к коду в ОС
+            ICol _cod = (ICol)_tableTIChannel.Cols.Item("cod_oc");
+            // Обращение к колонке привязка
+            ICol _privyazka = (ICol)_tableTIChannel.Cols.Item("prv_num");
+            // Обращение к колонке название телеметрии
+            ICol namePTI = (ICol)_tableTIChannel.Cols.Item("name");
+            // Обращение к колонке модель учета
+            ICol _model = (ICol)_tableTIChannel.Cols.Item("tip_ti");
+            // Обращение к колонке цена 1
+            ICol _price1 = (ICol)_tableTIChannel.Cols.Item("price1");
+            // Обращение к колонке цена 2
+            ICol _price2 = (ICol)_tableTIChannel.Cols.Item("price2");
+
+            _tableTIChannel.AddRow();
+            int numbersting = _tableTIChannel.Size - 1;
+
+            _numberTM.set_ZN(numbersting, _nachZnachIdentificator);
+            tip.set_ZN(numbersting, 0);
+            namePTI.set_ZN(numbersting, string.Concat("ПТИ", " ", nodeNamesNag[q], " ", priv));
+            _znachTm.set_ZN(numbersting, ptiPn);
+            _privyazka.set_ZN(numbersting, privint);
+            _id1.set_ZN(numbersting, numbersNag[q]);
+            _cod.set_ZN(numbersting, 1);
+            _model.set_ZN(numbersting, 1);
+            _price1.set_ZN(numbersting, 20);
+            _price2.set_ZN(numbersting, 20);
+        }
+        public static bool GetCountOfConnections(IRastr Rastr, List<double> numbers, int countTM)
         {
             // Обращение к таблице ветви
             ITable _vetvi = (ITable)Rastr.Tables.Item("vetv");
             // Обращение к колонке тип ветви
             ICol tipVetvi = (ICol)_vetvi.Cols.Item("tip");
-
-            _vetvi.SetSel($"ip={numbers[q]}");
-            int n = _vetvi.FindNextSel[-1];
-            int countNachConnections = 0;
-            if (n != -1)
-            {
-                int tipN = (int)tipVetvi.get_ZN(n);
-                while (n != -1)
-                {
-                    if (tipN != 2)
-                    {
-                        countNachConnections++;
-
-                    }
-                    n = _vetvi.FindNextSel[n];
-                }
-            }
-            _vetvi.SetSel($"iq={numbers[q]}");
-            int k = _vetvi.FindNextSel[-1];
             int countKonConnections = 0;
-            if (k != -1)
+            int countNachConnections = 0;
+            for (int q = 0; q < numbers.Count; q++)
             {
-                int tipK = (int)tipVetvi.get_ZN(k);
-                while (k != -1)
+                _vetvi.SetSel($"ip={numbers[q]}");
+                int n = _vetvi.FindNextSel[-1];
+
+                if (n != -1)
                 {
-                    if (tipK != 2)
+
+                    while (n != -1)
                     {
-                        countKonConnections++;
+                        int tipN = (int)tipVetvi.get_ZN(n);
+                        if (tipN != 2)
+                        {
+                            countNachConnections++;
+
+                        }
+                        n = _vetvi.FindNextSel[n];
                     }
-                    k = _vetvi.FindNextSel[k];
+                }
+                _vetvi.SetSel($"iq={numbers[q]}");
+                int k = _vetvi.FindNextSel[-1];
+
+                if (k != -1)
+                {
+
+                    while (k != -1)
+                    {
+                        int tipK = (int)tipVetvi.get_ZN(k);
+                        if (tipK != 2)
+                        {
+                            countKonConnections++;
+                        }
+                        k = _vetvi.FindNextSel[k];
+                    }
                 }
             }
             int sumConnections = countNachConnections + countKonConnections;
