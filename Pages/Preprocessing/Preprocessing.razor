@@ -2,8 +2,10 @@
 @using перенос_бд_на_Web.Models
 @using перенос_бд_на_Web.Services
 @using Microsoft.EntityFrameworkCore
+@using перенос_бд_на_Web.Pages.TM
 @inject ApplicationContext _context
 @inject DataFilterService _dataFilterService
+@inject ExperimentCorrData corrDataService
 
 <PageTitle>Предварительная подготовка файлов</PageTitle>
 
@@ -21,8 +23,81 @@
     private bool showDateIntervalFields = false; // Флаг для отображения полей
     private bool isCalculating = false; // Флаг для отображения прогресса
     private int progress = 0; // Прогресс выполнения
+    private bool showCorrelationButton = false; // Показывает кнопку корреляции
+    private List<TMValues> preparedDataSet; // Для данных с experiment_label = "Подготовленные данные"
+    private bool isStatusBarVisible;
+    private List<NedostovernayaTM> resultsTable; // Итоговая таблица
+    private List<NedostovernayaTM> filteredResultsTable = new(); // Таблица, содержащая только ПТИ и ДТИ
+    private bool showResultsTable = false; // Флаг отображения таблицы результатов
+    private string currentSortColumn;
+    private bool isAscending = true;
+
 
     private List<TMValues> filteredData;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Проверяем, есть ли данные с меткой "Подготовленные данные" в таблице tm
+            var preparedData = await _context.tm
+                .Where(tm => tm.experiment_label == "Подготовленные данные")
+                .ToListAsync();
+
+            if (preparedData != null && preparedData.Any())
+            {
+                resultsTable = preparedData;
+
+                // Фильтруем данные по NameTM
+                FilterByNameTM();
+
+                // Показываем таблицу результатов, если после фильтрации есть данные
+                showResultsTable = filteredResultsTable.Any();
+            }
+
+            else
+            {
+                showResultsTable = false; // Не показываем таблицу, если данных нет
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка при инициализации страницы: {ex.Message}");
+        }
+    }
+
+    private void FilterByNameTM()
+    {
+        // Фильтруем записи по значениям NameTM
+        filteredResultsTable = resultsTable
+            .Where(item => item.NameTM != null && (item.NameTM.Contains("ПТИ") || item.NameTM.Contains("ДТИ")))
+            .ToList();
+    }
+
+    private void SortData(string columnName)
+    {
+        if (currentSortColumn == columnName)
+        {
+            // Если столбец тот же, меняем порядок сортировки
+            isAscending = !isAscending;
+        }
+        else
+        {
+            // Если столбец другой, устанавливаем новую сортировку
+            currentSortColumn = columnName;
+            isAscending = true;
+        }
+
+        // Применяем сортировку
+        filteredResultsTable = isAscending
+            ? filteredResultsTable.OrderBy(item => GetPropertyValue(item, columnName)).ToList()
+            : filteredResultsTable.OrderByDescending(item => GetPropertyValue(item, columnName)).ToList();
+    }
+
+    private object GetPropertyValue(NedostovernayaTM item, string propertyName)
+    {
+        return typeof(NedostovernayaTM).GetProperty(propertyName)?.GetValue(item, null);
+    }
 
     private async Task ApplyFilters()
     {
@@ -84,7 +159,44 @@
         {
             isCalculating = false;
             progress = 100; // Устанавливаем прогресс на 100%
+            showCorrelationButton = true; // Показываем кнопку корреляции
             StateHasChanged();   
+        }
+    }
+
+    private async Task CalculateCorrelation()
+    {
+        try
+        {
+            preparedDataSet = await _context.TMValues
+                .Where(tm => tm.experiment_label == "Подготовленные данные")
+                .ToListAsync();
+
+            if (preparedDataSet == null || !preparedDataSet.Any())
+            {
+                Console.WriteLine("Нет подготовленных данных для расчёта корреляции.");
+                return;
+            }
+
+            await corrDataService.CalculationCorrelationWithExperimentLabel(
+                preparedDataSet,
+                "Подготовленные данные",
+                progress => { this.progress = progress; StateHasChanged(); },
+                 isVisible => { this.isStatusBarVisible = isVisible; StateHasChanged(); },
+                CancellationToken.None
+            );
+
+            resultsTable = await _context.tm
+                .Where(tm => tm.experiment_label == "Подготовленные данные")
+                .ToListAsync();
+
+            showResultsTable = true;
+
+            Console.WriteLine("Расчёт корреляции завершён.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка расчёта корреляции: {ex.Message}");
         }
     }
 
@@ -95,7 +207,6 @@
     <div class="d-flex flex-column mt-3">
         <label>Начало временного промежутка:</label>
         <input type="datetime-local" @bind="startDate" class="form-control mb-2" />
-
 
         <label>Конец временного промежутка:</label>
         <input type="datetime-local" @bind="endDate" class="form-control" />
@@ -122,6 +233,15 @@
     </button>
 </div>
 
+@if (showCorrelationButton)
+{
+    <div>
+        <button class="btn btn-warning mt-3" @onclick="CalculateCorrelation">
+            Рассчитать корреляцию для ДТИ и ПТИ
+        </button>
+    </div>
+}
+
 @if (isCalculating)
 {
     <div class="mt-4">
@@ -132,4 +252,50 @@
         <p>@progress% завершено</p>
     </div>
 }
-
+@if (showResultsTable)
+{
+    <h4 class="mt-4">Результаты расчёта</h4>
+    <table class="table table-bordered mt-2">
+        <thead>
+            <tr>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.ID))">
+                    Идентификатор @(currentSortColumn == nameof(NedostovernayaTM.ID) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.IndexTm))">
+                    Индекс ТМ @(currentSortColumn == nameof(NedostovernayaTM.IndexTm) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.CorrTm))">
+                    Корреляция @(currentSortColumn == nameof(NedostovernayaTM.CorrTm) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.Status))">
+                    Статус @(currentSortColumn == nameof(NedostovernayaTM.Status) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.MaxLagranj))">
+                    Максимальное значение множителя Лагранжа @(currentSortColumn == nameof(NedostovernayaTM.MaxLagranj) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+                <th @onclick="() => SortData(nameof(NedostovernayaTM.AvgLagranj))">
+                    Среднее значение множителя Лагранжа @(currentSortColumn == nameof(NedostovernayaTM.AvgLagranj) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var result in filteredResultsTable)
+            {
+                <tr>
+                    <td>@result.ID</td>
+                    <td>@result.IndexTm</td>
+                    <td>@Math.Round(result.CorrTm,4)</td>
+                    <td>@result.Status</td>
+                    <td>@Math.Round(result.MaxLagranj,4)</td>
+                    <td>@Math.Round(result.AvgLagranj,4)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+@* <style>
+    table th, table td {
+        text-align: center;
+        vertical-align: middle;
+    }
+</style> *@

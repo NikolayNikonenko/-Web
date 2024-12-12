@@ -39,8 +39,6 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
             // Обращение к колонке цена 2
             ICol _price2 = (ICol)_tableTIChannel.Cols.Item("price2");
 
-
-
             // Обращение к таблице узлы
             ITable _nodes = (ITable)Rastr.Tables.Item("node");
             // Обращение к колонке номер узла
@@ -252,7 +250,6 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
                 double ptiPn = (double)(sumPNach.Sum() + sumPKon.Sum());
                 double ptiQn = (double)(sumQNach.Sum() + sumQKon.Sum() - sumQInReactors.Sum());
 
-
                 if (ptiPn != 0)
                 {
                     GetPTI(Rastr, ptiPn, q, numbersNag, nodeNamesNag, _nachZnachIdentificator, "Pнаг", 4);
@@ -270,12 +267,7 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
 
                 Pn_exist.set_ZN(finalvalPn, 1);
                 Console.WriteLine($"Проведен расчет ПТИ нагрузки для ТМ № {numbersNag[q]}");
-                //                        else
-                //{
-                //    Console.WriteLine($"Для ТМ {numbersNag[q]} Расчет ПТИ для нагрузки невозможен ввиду отсутствия необходимой телеметрии присоединений");
-                //}
-
-
+          
             }
             for (int s = 0; s < numbersGen.Count; s++)
             {
@@ -325,7 +317,6 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
                     int konGen = _tableTIChannel.FindNextSel[-1];
                     while (konGen != -1)
                     {
-
                         priv = (string)_privyazka.get_ZN(konGen);
                         switch (priv)
                         {
@@ -429,7 +420,80 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
                 Directory.CreateDirectory(directoryPath);
             }
 
+            SavePTIData(_tableTIChannel, context, FullSaveFile, sliceName);
+
             Rastr.Save(FullSaveFile, "");
+        }
+
+        public void SavePTIData(ITable _tableTIChannel, ApplicationContext context, string FullSaveFile, string sliceName)
+        {
+            // Инициализация колонок
+            ICol _numberTM = (ICol)_tableTIChannel.Cols.Item("Num");
+            ICol _znachTm = (ICol)_tableTIChannel.Cols.Item("ti_val");
+            ICol _ocen = (ICol)_tableTIChannel.Cols.Item("ti_ocen");
+            ICol _privyazka = (ICol)_tableTIChannel.Cols.Item("prv_num");
+            ICol _id1 = (ICol)_tableTIChannel.Cols.Item("id1");
+            ICol namePTI = (ICol)_tableTIChannel.Cols.Item("name");
+            ICol lagr = (ICol)_tableTIChannel.Cols.Item("lagr");
+            ICol type = (ICol)_tableTIChannel.Cols.Item("type");
+            ICol cod = (ICol)_tableTIChannel.Cols.Item("cod_oc");
+
+            var sliceID = Guid.NewGuid();
+
+            var slice = new Slices
+            {
+                SliceID = sliceID,
+                SliceName = sliceName,
+                SlicePath = FullSaveFile,
+                experiment_label = "Подготовленные данные"
+            };
+
+            context.slices.Add(slice);
+
+            int rowCount = _tableTIChannel.Size;
+
+            for (int i = 0; i < rowCount; i++)
+            {
+                var indexTM = Convert.ToDouble(_numberTM.get_ZN(i));
+                var izmerValue = Convert.ToDouble(_znachTm.get_ZN(i));
+                var ocenValue = Convert.ToDouble(_ocen.get_ZN(i));
+                var privyazka = _privyazka.get_ZN(i)?.ToString();
+                var id1 = Convert.ToInt32(_id1.get_ZN(i));
+                var nameTM = namePTI.get_ZN(i)?.ToString();
+                var lagranj = Convert.ToDouble(lagr.get_ZN(i));
+
+                if (IsRelevantTM(type, cod, i))
+                {
+                    var tmValue = new TMValues
+                    {
+                        ID = Guid.NewGuid(),
+                        IndexTM = indexTM,
+                        IzmerValue = izmerValue,
+                        OcenValue = ocenValue,
+                        Privyazka = privyazka,
+                        Id1 = id1,
+                        NameTM = nameTM,
+                        NumberOfSrez = sliceName,
+                        OrderIndex = i, // Порядковый номер строки
+                        DeltaOcenIzmer = ocenValue - izmerValue,
+                        SliceID = sliceID, // Привязка к текущему Slice
+                        Lagranj = lagranj,
+                        experiment_label = "Подготовленные данные"
+                    };
+                    // Добавление объекта в базу данных
+                    context.TMValues.Add(tmValue);
+                }
+                // Сохранение всех данных в базе
+            }
+            context.SaveChanges();
+        }
+
+        static bool IsRelevantTM(ICol typeTM, ICol cod_v_OC, int numTm)
+        {
+            int typeValue = (int)typeTM.get_ZN(numTm);
+            int codValue = (int)cod_v_OC.get_ZN(numTm);
+
+            return (typeValue == 0 || typeValue == 2) && codValue == 1;
         }
 
         public static void GetNodes(ref List<double> arrNachVetv, IRastr Rastr, int status)
