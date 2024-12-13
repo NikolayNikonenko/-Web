@@ -69,6 +69,8 @@ namespace перенос_бд_на_Web
 
             builder.Services.AddScoped<CorrData>();
             builder.Services.AddScoped<ExperimentCorrData>();
+            builder.Services.AddScoped<CalculationIntervalServiceForPTI>();
+
 
             builder.Services.AddScoped<ReliabilityAnalyzer>();
             builder.Services.AddLogging();

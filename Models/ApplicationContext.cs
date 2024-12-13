@@ -10,6 +10,7 @@ namespace перенос_бд_на_Web.Models
         public DbSet <ActivePowerImbalance> active_power_imbalance { get; set; }
         public DbSet<ReactivePowerImbalance> reactive_power_imbalance { get; set; }
         public DbSet<FilePath> file_paths { get; set; }
+        public DbSet<CalculationIntervalForPTI> calculationIntervalForPTIs { get; set; }
         //public DbSet <ExperimentFiles> experiment_file { get; set; }
         //public DbSet <ModifiedTMValues> tm_values_after_verification { get; set; }
 

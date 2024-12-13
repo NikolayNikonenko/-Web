@@ -6,6 +6,7 @@
 @inject ApplicationContext _context
 @inject DataFilterService _dataFilterService
 @inject ExperimentCorrData corrDataService
+@inject CalculationIntervalServiceForPTI CalculationIntervalService
 
 <PageTitle>Предварительная подготовка файлов</PageTitle>
 
@@ -16,8 +17,8 @@
 </div>
 
 @code {
-    private DateTime? startDate;
-    private DateTime? endDate;
+    private DateTime startDate;
+    private DateTime endDate;
     private int thinningInterval = 1;
     private bool isThinning = false; // Флаг для прореживания
     private bool showDateIntervalFields = false; // Флаг для отображения полей
@@ -31,6 +32,8 @@
     private bool showResultsTable = false; // Флаг отображения таблицы результатов
     private string currentSortColumn;
     private bool isAscending = true;
+
+    private CalculationIntervalForPTI lastInterval;
 
 
     private List<TMValues> filteredData;
@@ -64,7 +67,17 @@
         {
             Console.WriteLine($"Ошибка при инициализации страницы: {ex.Message}");
         }
+        lastInterval = await CalculationIntervalService.GetLastCalculationInterval();
     }
+
+    // private async Task HandleSubmit()
+    // {
+    //     if (startDate != default && endDate != default)
+    //     {
+    //         await CalculationIntervalService.SaveCalculationInterval(startDate, endDate);
+    //         lastInterval = await CalculationIntervalService.GetLastCalculationInterval();
+    //     }
+    // }
 
     private void FilterByNameTM()
     {
@@ -200,6 +213,7 @@
         }
     }
 
+
 }
 
 @if (showDateIntervalFields)
@@ -252,6 +266,18 @@
         <p>@progress% завершено</p>
     </div>
 }
+@* @if (lastInterval != null)
+{
+    <p><b>ПТИ и ДТИ рассчитаны для интервала:</b> от: @lastInterval.StartDate.ToString("yyyy-MM-dd") до: @lastInterval.EndDate.ToString("yyyy-MM-dd")</p>
+}
+<form @onsubmit="HandleSubmit">
+    <label>Начальная дата:</label>
+    <input type="date" @bind="startDate" />
+    <label>Конечная дата:</label>
+    <input type="date" @bind="endDate" />
+    <button type="submit">Сохранить интервал</button>
+</form> *@
+
 @if (showResultsTable)
 {
     <h4 class="mt-4">Результаты расчёта</h4>
