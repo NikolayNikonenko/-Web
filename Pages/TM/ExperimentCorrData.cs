@@ -34,8 +34,8 @@ namespace перенос_бд_на_Web.Pages.TM
                     .ThenBy(key => key.Id1)
                     .ToList();
 
-                //int totalIterations = uniqueKeys.Count;
-                //int processedCount = 0;
+                int totalIterations = uniqueKeys.Count;
+                int processedCount = 0;
                 var newRecords = new List<NedostovernayaTM>();
 
                 foreach (var key in uniqueKeys)
@@ -93,11 +93,11 @@ namespace перенос_бд_на_Web.Pages.TM
                         experiment_label = latestExperimentLabel
                     });
 
-                    //processedCount++;
-                    //int progress = (int)((double)processedCount / totalIterations * 100);
+                    processedCount++;
+                    int progress = (int)((double)processedCount / totalIterations * 100);
 
-                    // Обновление прогресса на каждой итерации
-                    //progressCallback(progress);
+                    //Обновление прогресса на каждой итерации
+                    progressCallback(progress);
                 }
 
                 await _correlation_Context.tm.AddRangeAsync(newRecords);

@@ -27,7 +27,7 @@
     private int progress = 0; // Прогресс выполнения
     private bool showCorrelationButton = false; // Показывает кнопку корреляции
     private List<TMValues> preparedDataSet; // Для данных с experiment_label = "Подготовленные данные"
-    private bool isStatusBarVisible;
+    private bool isStatusBarVisible=false;
     private List<NedostovernayaTM> resultsTable; // Итоговая таблица
     private List<NedostovernayaTM> filteredResultsTable = new(); // Таблица, содержащая только ПТИ и ДТИ
     private bool showResultsTable = false; // Флаг отображения таблицы результатов
@@ -194,6 +194,7 @@
 
     private async Task CalculateCorrelation()
     {
+        progress = 0;
         try
         {
             preparedDataSet = await _context.TMValues
@@ -206,6 +207,7 @@
                 return;
             }
 
+            // Запуск расчёта с обновлением прогресса и статуса
             await corrDataService.CalculationCorrelationWithExperimentLabel(
                 preparedDataSet,
                 "Подготовленные данные",
@@ -214,7 +216,7 @@
                 CancellationToken.None
             );
 
-
+            // После завершения показать таблицу
             resultsTable = await _context.tm
                 .Where(tm => tm.experiment_label == "Подготовленные данные")
                 .ToListAsync();
@@ -287,6 +289,19 @@
         <button class="btn btn-warning mt-3" @onclick="CalculateCorrelation">
             Рассчитать корреляцию для ДТИ и ПТИ
         </button>
+    </div>
+}
+
+@if (isStatusBarVisible)
+{
+    <div>
+        <p>Прогресс расчёта: @progress%</p>
+        <div class="progress">
+            <div class="progress-bar" role="progressbar" style="width: @progress%;"
+                 aria-valuenow="@progress" aria-valuemin="0" aria-valuemax="100">
+                @progress%
+            </div>
+        </div>
     </div>
 }
 
