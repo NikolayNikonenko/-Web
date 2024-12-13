@@ -17,8 +17,9 @@
 </div>
 
 @code {
-    private DateTime startDate;
-    private DateTime endDate;
+    private DateTime? startDate = null;
+    private DateTime? endDate = null;
+
     private int thinningInterval = 1;
     private bool isThinning = false; // Флаг для прореживания
     private bool showDateIntervalFields = false; // Флаг для отображения полей
@@ -32,6 +33,7 @@
     private bool showResultsTable = false; // Флаг отображения таблицы результатов
     private string currentSortColumn;
     private bool isAscending = true;
+    private bool hasPreparedData = false;
 
     private CalculationIntervalForPTI lastInterval;
 
@@ -42,6 +44,13 @@
     {
         try
         {
+            hasPreparedData = await HasPreparedData();
+            lastInterval = await CalculationIntervalService.GetLastCalculationInterval();
+            if (lastInterval != null)
+            {
+                startDate = lastInterval.startDate;
+                endDate = lastInterval.endDate;
+            }
             // Проверяем, есть ли данные с меткой "Подготовленные данные" в таблице tm
             var preparedData = await _context.tm
                 .Where(tm => tm.experiment_label == "Подготовленные данные")
@@ -67,17 +76,22 @@
         {
             Console.WriteLine($"Ошибка при инициализации страницы: {ex.Message}");
         }
-        lastInterval = await CalculationIntervalService.GetLastCalculationInterval();
     }
 
-    // private async Task HandleSubmit()
-    // {
-    //     if (startDate != default && endDate != default)
-    //     {
-    //         await CalculationIntervalService.SaveCalculationInterval(startDate, endDate);
-    //         lastInterval = await CalculationIntervalService.GetLastCalculationInterval();
-    //     }
-    // }
+    private async Task HandleSubmit()
+    {
+        if (startDate.HasValue && endDate.HasValue)
+        {
+            await CalculationIntervalService.SaveCalculationInterval(startDate.Value, endDate.Value);
+            lastInterval = await CalculationIntervalService.GetLastCalculationInterval();
+
+            Console.WriteLine($"Интервал сохранён: {startDate:dd.MM.yyyy HH:mm:ss} - {endDate:dd.MM.yyyy HH:mm:ss}");
+        }
+        else
+        {
+            Console.WriteLine("Ошибка: Не все поля заполнены.");
+        }
+    }
 
     private void FilterByNameTM()
     {
@@ -122,6 +136,7 @@
         {
             Console.WriteLine($"Ошибка: {ex.Message}");
         }
+        HandleSubmit();
     }
 
     private void ToggleDateIntervalFields()
@@ -199,6 +214,7 @@
                 CancellationToken.None
             );
 
+
             resultsTable = await _context.tm
                 .Where(tm => tm.experiment_label == "Подготовленные данные")
                 .ToListAsync();
@@ -212,8 +228,26 @@
             Console.WriteLine($"Ошибка расчёта корреляции: {ex.Message}");
         }
     }
+    public async Task<bool> HasPreparedData()
+    {
+        return await _context.tm
+            .AnyAsync(t => t.experiment_label == "Подготовленные данные");
+    }
 
+}
 
+@if (isCalculating)
+{
+    <div class="progress mt-3">
+        <div class="progress-bar progress-bar-striped progress-bar-animated"
+             role="progressbar"
+             style="width: @progress%"
+             aria-valuenow="@progress"
+             aria-valuemin="0"
+             aria-valuemax="100">
+            @progress%
+        </div>
+    </div>
 }
 
 @if (showDateIntervalFields)
@@ -256,27 +290,15 @@
     </div>
 }
 
-@if (isCalculating)
+@if (lastInterval != null && hasPreparedData)
 {
-    <div class="mt-4">
-        <h5>Прогресс выполнения:</h5>
-        <div class="progress">
-            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: @progress%;"></div>
-        </div>
-        <p>@progress% завершено</p>
-    </div>
+    <p>
+        <b>ПТИ и ДТИ рассчитаны для интервала:</b>
+        от: <span>@lastInterval.startDate.ToString("dd.MM.yy HH:mm:ss")</span>
+        до: <span>@lastInterval.endDate.ToString("dd.MM.yy HH:mm:ss")</span>
+    </p>
 }
-@* @if (lastInterval != null)
-{
-    <p><b>ПТИ и ДТИ рассчитаны для интервала:</b> от: @lastInterval.StartDate.ToString("yyyy-MM-dd") до: @lastInterval.EndDate.ToString("yyyy-MM-dd")</p>
-}
-<form @onsubmit="HandleSubmit">
-    <label>Начальная дата:</label>
-    <input type="date" @bind="startDate" />
-    <label>Конечная дата:</label>
-    <input type="date" @bind="endDate" />
-    <button type="submit">Сохранить интервал</button>
-</form> *@
+
 
 @if (showResultsTable)
 {

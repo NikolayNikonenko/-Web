@@ -14,7 +14,14 @@ namespace перенос_бд_на_Web.Models
         //public DbSet <ExperimentFiles> experiment_file { get; set; }
         //public DbSet <ModifiedTMValues> tm_values_after_verification { get; set; }
 
-
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<CalculationIntervalForPTI>(entity =>
+            {
+                entity.HasNoKey(); // Указываем, что таблица не имеет первичного ключа
+                entity.ToTable("calculationIntervalForPTIs"); // Если нужно привязать к таблице/представлению
+            });
+        }
         public ApplicationContext(DbContextOptions<ApplicationContext> options) : base(options) 
         { 
             Database.EnsureCreated();
@@ -22,7 +29,7 @@ namespace перенос_бд_на_Web.Models
         //protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         //{
         //    optionsBuilder.UseNpgsql("Host=localhost;Port = 5432;Database=БД_ИТ_диплом;Username=postgres;Password=HgdMoxN2");
-           
+
         //}
 
     }

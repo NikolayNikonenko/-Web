@@ -1,5 +1,6 @@
 ﻿using перенос_бд_на_Web.Models;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 namespace перенос_бд_на_Web.Services
 {
     public class CalculationIntervalServiceForPTI
@@ -14,9 +15,12 @@ namespace перенос_бд_на_Web.Services
         // Сохранение интервала
         public async Task SaveCalculationInterval(DateTime startDate, DateTime endDate)
         {
+            Console.WriteLine($"Вызываю процедуру с параметрами: {startDate} - {endDate}");
+
             await _dbContext.Database.ExecuteSqlRawAsync(
-                "CALL AddOrUpdateCalculationInterval({0}, {1})",
-                startDate, endDate
+                "CALL AddOrUpdateCalculationInterval(@startDate, @endDate)",
+                new NpgsqlParameter("startDate", startDate),
+                new NpgsqlParameter("endDate", endDate)
             );
         }
 
@@ -24,7 +28,7 @@ namespace перенос_бд_на_Web.Services
         public async Task<CalculationIntervalForPTI> GetLastCalculationInterval()
         {
             return await _dbContext.calculationIntervalForPTIs
-                .FromSqlRaw("SELECT * FROM GetLastCalculationInterval()")
+                .FromSqlRaw("SELECT \"startDate\" AS \"startDate\", \"endDate\" AS \"endDate\" FROM CalculationIntervals ORDER BY \"createDat\" DESC LIMIT 1")
                 .FirstOrDefaultAsync();
         }
     }
