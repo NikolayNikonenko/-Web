@@ -9,6 +9,8 @@ using перенос_бд_на_Web.Models;
 using перенос_бд_на_Web.Pages.TM;
 using Microsoft.EntityFrameworkCore;
 using static System.Formats.Asn1.AsnWriter;
+using System.Drawing;
+using System.Text.RegularExpressions;
 
 namespace перенос_бд_на_Web.Services
 {
@@ -192,6 +194,14 @@ namespace перенос_бд_на_Web.Services
                             experimentLabel,
                             tmValues
                         );
+
+
+                        // Сохраняем модифицированные значения active_power_imbalance
+                        await SaveActivePowerImbalanceAsync(_rastr, experimentFileId, (int)orderIndex, experimentLabel, context);
+
+                        // Сохраняем модифицированные значения reactive_power_imbalance
+
+                        await SaveReactivePowerImbalanceAsync(_rastr, experimentFileId, (int)orderIndex, experimentLabel, context);
                     }
 
                     // Подтверждаем транзакцию
@@ -373,6 +383,93 @@ namespace перенос_бд_на_Web.Services
             return (((int)typeTM.get_ZN(numTm) == 0) || ((int)typeTM.get_ZN(numTm) == 2));
         }
 
+        // Метод для сохранения данных в таблицу ActivePowerImbalance
+        public async Task SaveActivePowerImbalanceAsync(IRastr _rastr, Guid idFileAfterModified, int orderIndex, string nextExperimentLabel, ApplicationContext context)
+        {
+            ITable _active_power_imbalance = (ITable)_rastr.Tables.Item("ti_balans_p");
+            ICol n_nach_P = (ICol)_active_power_imbalance.Cols.Item("ti_ip");
+            ICol n_kon_P = (ICol)_active_power_imbalance.Cols.Item("ti_iq");
+            ICol name_P = (ICol)_active_power_imbalance.Cols.Item("name");
+            ICol dP = (ICol)_active_power_imbalance.Cols.Item("dp");
+
+            int countNebP = _active_power_imbalance.Size;
+            var activePowerImbalanceList = new List<ActivePowerImbalance>();
+
+            for (int n_neb_p = 0; n_neb_p < countNebP; n_neb_p++)
+            {
+                double dPNeb = (double)dP.get_ZN(n_neb_p);
+                if (ShouldSave(dPNeb))
+                {
+                    int nNachPNeb = (int)n_nach_P.get_ZN(n_neb_p);
+                    int nKonPNeb = (int)n_kon_P.get_ZN(n_neb_p);
+                    string namePNeb = (string)name_P.get_ZN(n_neb_p);
+
+                    activePowerImbalanceList.Add(new ActivePowerImbalance
+                    {
+                        ID = Guid.NewGuid(),
+                        n_nach_p = nNachPNeb,
+                        n_kon_p = nKonPNeb,
+                        name_p = namePNeb,
+                        p_neb_p = dPNeb,
+                        SliceID_p = idFileAfterModified,
+                        orderIndexP = orderIndex,
+                        experiment_label = nextExperimentLabel
+                    });
+                }
+            }
+
+            // Сохранение данных асинхронно
+            {
+                await context.active_power_imbalance.AddRangeAsync(activePowerImbalanceList);
+                await context.SaveChangesAsync();
+            }
+        }
+
+        public async Task SaveReactivePowerImbalanceAsync(IRastr _rastr, Guid idFileAfterModified, int orderIndex, string nextExperimentLabel, ApplicationContext context)
+        {
+            ITable _reactive_power_imbalance = (ITable)_rastr.Tables.Item("ti_balans_q");
+            ICol n_nach_Q = (ICol)_reactive_power_imbalance.Cols.Item("ti_ip");
+            ICol n_kon_Q = (ICol)_reactive_power_imbalance.Cols.Item("ti_iq");
+            ICol name_Q = (ICol)_reactive_power_imbalance.Cols.Item("name");
+            ICol dq = (ICol)_reactive_power_imbalance.Cols.Item("dq");
+
+            int countNebQ = _reactive_power_imbalance.Size;
+            var reactivePowerImbalanceList = new List<ReactivePowerImbalance>();
+
+            for (int n_neb_q = 0; n_neb_q < countNebQ; n_neb_q++)
+            {
+                double dQNeb = (double)dq.get_ZN(n_neb_q);
+                if (ShouldSave(dQNeb))
+                {
+
+                    int nNachQNeb = (int)n_nach_Q.get_ZN(n_neb_q);
+                    int nKonQNeb = (int)n_kon_Q.get_ZN(n_neb_q);
+                    string nameQNeb = (string)name_Q.get_ZN(n_neb_q);
+
+                    reactivePowerImbalanceList.Add(new ReactivePowerImbalance
+                    {
+                        ID = Guid.NewGuid(),
+                        n_nach_q = nNachQNeb,
+                        n_kon_q = nKonQNeb,
+                        name_q = nameQNeb,
+                        q_neb_q = dQNeb,
+                        SliceID_q = idFileAfterModified,
+                        orderIndexQ = orderIndex,
+                        experiment_label = nextExperimentLabel
+                    });
+                }
+            }
+
+            // Сохранение данных асинхронно
+           
+                await context.reactive_power_imbalance.AddRangeAsync(reactivePowerImbalanceList);
+                await context.SaveChangesAsync();
+        }
+
+        private bool ShouldSave(double value)
+        {
+            return Math.Abs(value) > 0;
+        }
 
         // Пример реализации методов для каждого действия
         private async Task<bool> ChangeSign(List<VerificationAction> actions)

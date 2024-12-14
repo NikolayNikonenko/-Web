@@ -9,5 +9,6 @@
         public double p_neb_p { get; set; }
         public Guid SliceID_p { get; set; }
         public int orderIndexP { get; set;}
+        public string experiment_label { get; set; }
     }
 }
