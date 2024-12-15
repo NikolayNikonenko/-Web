@@ -4,7 +4,7 @@
 @using перенос_бд_на_Web.Services
 @using Microsoft.EntityFrameworkCore
 @inject ApplicationContext DbContext
-@inject перенос_бд_на_Web.SlicesService SlicesService
+@inject SliceService sliceService
 @inject IJSRuntime JS
 @inject ReliabilityAnalyzer ReliabilityAnalyzer
 @inject PowerImbalanceService PowerImbalanceService
@@ -15,7 +15,9 @@
     private int successfulCount = 0;
     private int totalCount = 0;
     private int currentProgress = 0;
-    private ElementReference chartElement;
+    // private ElementReference chartElement;
+    private ElementReference chartFirstSetRef;
+    private ElementReference chartSecondSetRef;
     private CancellationTokenSource cancellationTokenSource;
     private DateTime? startDateTime;
     private DateTime? endDateTime;
@@ -33,6 +35,9 @@
     private string secondSelectedSet;
     private List<string> uniqueExperimentLabels;
 
+
+    private (int successfulCount, int totalCount) firstSetResults;
+    private (int successfulCount, int totalCount) secondSetResults;
 
     protected override async Task OnInitializedAsync()
     {
@@ -52,12 +57,13 @@
         if (firstRender)
         {
             // Первоначальная настройка, если необходимо
-        }
-        else if (isChartReady)
-        {
             await DrawChart();
-            isChartReady = false; // Сбрасываем флаг
         }
+        // else if (isChartReady)
+        // {
+        //     await DrawChart();
+        //     isChartReady = false; // Сбрасываем флаг
+        // }
     }
 
     private async Task ProcessReliabilityData()
@@ -73,9 +79,10 @@
         errorMessage = null;
         try
         {
-            var filePaths = await SlicesService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value);
+            var filePathsFirstSet = await sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, firstSelectedSet);
+            var filePathsSecondSet = await sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, secondSelectedSet);
 
-            if (filePaths.Count == 0)
+            if (filePathsFirstSet.Count == 0 || filePathsSecondSet.Count==0)
             {
                 errorMessage = "Не найдено файлов в указанном интервале времени.";
                 return;
@@ -87,16 +94,33 @@
                 return;
             }
 
-            var result = await ReliabilityAnalyzer.AnalyzeReliabilityData(
+            // Анализ первого набора
+            var firstResult = await ReliabilityAnalyzer.AnalyzeReliabilityData(
                 startDateTime.Value,
                 endDateTime.Value,
-                filePaths,
+                filePathsFirstSet,
                 UpdateProgress,
                 cancellationTokenSource.Token
             );
 
-            successfulCount = result.successfulCount;
-            totalCount = result.totalCount;
+            // Анализ второго набора
+            var secondResult = await ReliabilityAnalyzer.AnalyzeReliabilityData(
+                startDateTime.Value,
+                endDateTime.Value,
+                filePathsSecondSet,
+                UpdateProgress,
+                cancellationTokenSource.Token
+            );
+
+
+            // Сохраняем результаты
+            firstSetResults = (firstResult.successfulCount, firstResult.totalCount);
+            secondSetResults = (secondResult.successfulCount, secondResult.totalCount);
+
+            // successfulCount = result.successfulCount;
+            // totalCount = result.totalCount;
+
+            isChartReady = true; // Флаг для отрисовки диаграмм
 
             maxActivePowerImbalance = await PowerImbalanceService.GetMaxActivePowerImbalanceAsync();
             maxReactivePowerImbalance = await PowerImbalanceService.GetMaxReactivePowerImbalanceAsync();
@@ -142,12 +166,15 @@
 
     private async Task DrawChart()
     {
-        if (successfulCount == 0 && totalCount == 0)
+        if (firstSetResults.totalCount > 0)
         {
-            return;
+            await JS.InvokeVoidAsync("drawDonutChart", chartFirstSetRef, firstSetResults.successfulCount, firstSetResults.totalCount);
         }
 
-        await JS.InvokeVoidAsync("drawDonutChart", chartElement, successfulCount, totalCount);
+        if (secondSetResults.totalCount > 0)
+        {
+            await JS.InvokeVoidAsync("drawDonutChart", chartSecondSetRef, secondSetResults.successfulCount, secondSetResults.totalCount);
+        }
     }
 
     private void UpdateProgress(int progress)
@@ -162,7 +189,7 @@
         cancellationTokenSource?.Dispose();
     }
 
-    private double GetSuccessRate()
+    private double GetSuccessRate(int successfulCount, int totalCount)
     {
         return totalCount > 0 ? Math.Round((double)successfulCount / totalCount * 100,3) : 0;
     }
@@ -232,14 +259,20 @@
     </div>
 }
 
-@if (totalCount > 0)
+@if (firstSetResults.totalCount > 0 || secondSetResults.totalCount > 0)
 {
     <div class="mt-4">
         <h5>Расчетный интервал: от @startDateTime до @endDateTime</h5>
-        <div class="chart-container d-flex">
-            <canvas id="chart" @ref="chartElement"></canvas>
-            <div class="chart-info">
-                <p>Успешность ОС: @GetSuccessRate()%</p>
+        <div class="row">
+            <div class="col-md-6 text-center">
+                <h6>@firstSelectedSet</h6>
+                <canvas @ref="chartFirstSetRef"></canvas>
+                <p>Успешность ОС: @GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount)%</p>
+            </div>
+            <div class="col-md-6 text-center">
+                <h6>@secondSelectedSet</h6>
+                <canvas @ref="chartSecondSetRef"></canvas>
+                <p>Успешность ОС: @GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount)%</p>
             </div>
         </div>
     </div>
@@ -310,10 +343,17 @@
                     <td>@Math.Round(standardDeviation,3)</td>
                 </tr>
             }
-            <tr>
-                <td>Успешность ОС</td>
-                <td>@GetSuccessRate()%</td>
-            </tr>
+            @* <tr>
+                <div>
+                    <h3>График 1</h3>
+                    <p>Успешность: @GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount)%</p>
+                    <!-- Код для графика 1 -->
+
+                    <h3>График 2</h3>
+                    <p>Успешность: @GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount)%</p>
+                    <!-- Код для графика 2 -->
+                </div>
+            </tr> *@
         </tbody>
     </table>
 }

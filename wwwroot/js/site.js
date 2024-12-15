@@ -1,5 +1,5 @@
 ﻿
-let chartInstance = null;
+let chartInstances = new Map();
 
 function drawDonutChart(chartElement, successfulCount, totalCount) {
     console.log('Вызов функции drawDonutChart с параметрами: successfulCount =', successfulCount, ', totalCount =', totalCount);
@@ -15,12 +15,13 @@ function drawDonutChart(chartElement, successfulCount, totalCount) {
         return;
     }
 
-    // Уничтожить предыдущий график, если он существует
-    if (chartInstance) {
-        chartInstance.destroy();
+    // Уничтожить предыдущий график, если он уже существует
+    if (chartInstances.has(chartElement)) {
+        chartInstances.get(chartElement).destroy();
     }
 
-    chartInstance = new Chart(ctx, {
+    // Создать новую диаграмму и сохранить её
+    const newChartInstance = new Chart(ctx, {
         type: 'doughnut',
         data: {
             labels: ['Успешные', 'Неуспешные'],
@@ -35,4 +36,6 @@ function drawDonutChart(chartElement, successfulCount, totalCount) {
             maintainAspectRatio: false
         }
     });
+
+    chartInstances.set(chartElement, newChartInstance);
 }
