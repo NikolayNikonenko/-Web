@@ -56,14 +56,13 @@
     {
         if (firstRender)
         {
-            // Первоначальная настройка, если необходимо
-            await DrawChart();
+            firstRender = false;
         }
-        // else if (isChartReady)
-        // {
-        //     await DrawChart();
-        //     isChartReady = false; // Сбрасываем флаг
-        // }
+        else if (isChartReady && !isProcessing)
+        {
+            await DrawChart();
+            isChartReady = false; // Сбрасываем флаг
+        }
     }
 
     private async Task ProcessReliabilityData()
@@ -82,7 +81,7 @@
             var filePathsFirstSet = await sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, firstSelectedSet);
             var filePathsSecondSet = await sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, secondSelectedSet);
 
-            if (filePathsFirstSet.Count == 0 || filePathsSecondSet.Count==0)
+            if (filePathsFirstSet.Count == 0 || filePathsSecondSet.Count == 0)
             {
                 errorMessage = "Не найдено файлов в указанном интервале времени.";
                 return;
@@ -143,7 +142,7 @@
             cancellationTokenSource = null;
         }
 
-        StateHasChanged(); 
+        StateHasChanged(); // Обновляем интерфейс
     }
 
     private async Task<double> CalculateAverageDeviationAsync()
@@ -191,7 +190,7 @@
 
     private double GetSuccessRate(int successfulCount, int totalCount)
     {
-        return totalCount > 0 ? Math.Round((double)successfulCount / totalCount * 100,3) : 0;
+        return totalCount > 0 ? Math.Round((double)successfulCount / totalCount * 100, 3) : 0;
     }
 
 }
@@ -245,7 +244,7 @@
     <input id="endDateTime" type="datetime-local" @bind="endDateTime" class="form-control" style="width: 200px;" />
 </div>
 
-
+<!-- Кнопка -->
 <div class="mt-3">
     <button class="btn btn-primary" @onclick="ProcessReliabilityData" disabled="@isProcessing">
         Показатели надежности без ЕОТМ
@@ -261,17 +260,23 @@
 
 @if (firstSetResults.totalCount > 0 || secondSetResults.totalCount > 0)
 {
-    <div class="mt-4">
+    <div class="mt-4 text-center">
         <h5>Расчетный интервал: от @startDateTime до @endDateTime</h5>
-        <div class="row">
-            <div class="col-md-6 text-center">
+        <div class="row justify-content-center">
+            <!-- Первый график -->
+            <div class="col-md-6">
                 <h6>@firstSelectedSet</h6>
-                <canvas @ref="chartFirstSetRef"></canvas>
+                <div class="chart-container">
+                    <canvas @ref="chartFirstSetRef"></canvas>
+                </div>
                 <p>Успешность ОС: @GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount)%</p>
             </div>
-            <div class="col-md-6 text-center">
+            <!-- Второй график -->
+            <div class="col-md-6">
                 <h6>@secondSelectedSet</h6>
-                <canvas @ref="chartSecondSetRef"></canvas>
+                <div class="chart-container">
+                    <canvas @ref="chartSecondSetRef"></canvas>
+                </div>
                 <p>Успешность ОС: @GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount)%</p>
             </div>
         </div>
@@ -300,7 +305,7 @@
                     <td>
                         Наименование среза: @maxActivePowerImbalance.sliceName<br />
                         Наименование узла: @maxActivePowerImbalance.imbalance.name_p<br />
-                        Небаланс: @Math.Round(maxActivePowerImbalance.imbalance.p_neb_p,3)
+                        Небаланс: @Math.Round(maxActivePowerImbalance.imbalance.p_neb_p, 3)
                     </td>
                 </tr>
             }
@@ -311,7 +316,7 @@
                     <td>
                         Наименование среза: @maxReactivePowerImbalance.sliceName<br />
                         Наименование узла: @maxReactivePowerImbalance.imbalance.name_q<br />
-                        Небаланс: @Math.Round(maxReactivePowerImbalance.imbalance.q_neb_q,3)
+                        Небаланс: @Math.Round(maxReactivePowerImbalance.imbalance.q_neb_q, 3)
                     </td>
                 </tr>
             }
@@ -319,41 +324,41 @@
             {
                 <tr>
                     <td>Усредненный суммарный небаланс по активной мощности</td>
-                    <td>@Math.Round(averageTotalActivePowerImbalance,3)</td>
+                    <td>@Math.Round(averageTotalActivePowerImbalance, 3)</td>
                 </tr>
             }
             @if (averageTotalReactivePowerImbalance != 0)
             {
                 <tr>
                     <td>Усредненный суммарный небаланс по реактивной мощности</td>
-                    <td>@Math.Round(averageTotalReactivePowerImbalance,3)</td>
+                    <td>@Math.Round(averageTotalReactivePowerImbalance, 3)</td>
                 </tr>
             }
             @if (averageDeviation != 0)
             {
                 <tr>
                     <td>Среднее по выборке математическое ожидание отклонения измеренного от оцененного</td>
-                    <td>@Math.Round(averageDeviation,3)</td>
+                    <td>@Math.Round(averageDeviation, 3)</td>
                 </tr>
             }
             @if (standardDeviation != 0)
             {
                 <tr>
                     <td>Среднеквадратичное отклонение измеренных значений</td>
-                    <td>@Math.Round(standardDeviation,3)</td>
+                    <td>@Math.Round(standardDeviation, 3)</td>
                 </tr>
             }
             @* <tr>
-                <div>
-                    <h3>График 1</h3>
-                    <p>Успешность: @GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount)%</p>
-                    <!-- Код для графика 1 -->
+        <div>
+        <h3>График 1</h3>
+        <p>Успешность: @GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount)%</p>
+        <!-- Код для графика 1 -->
 
-                    <h3>График 2</h3>
-                    <p>Успешность: @GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount)%</p>
-                    <!-- Код для графика 2 -->
-                </div>
-            </tr> *@
+        <h3>График 2</h3>
+        <p>Успешность: @GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount)%</p>
+        <!-- Код для графика 2 -->
+        </div>
+        </tr> *@
         </tbody>
     </table>
 }
@@ -361,14 +366,29 @@
 <style>
     .chart-container {
         width: 25vw;
-        height: 25vh;
-        position: relative;
+        max-width: 300px; /* Максимальная ширина */
+    @* position: relative; *@ margin: 0 auto; /* Центрирование и небольшой отступ */
+        display: flex;
+        justify-content: center; /* Центрирует график по горизонтали */
+        align-items: center; /* Центрирует график по вертикали */
     }
+
+        .chart-container h6 {
+            margin: 0; /* Полностью убирает внешние отступы у заголовка */
+            padding: 0; /* На случай, если есть внутренние отступы */
+            font-size: 1rem; /* Размер шрифта для большей точности */
+            text-align: center; /* Центрирование текста заголовка */
+        }
 
         .chart-container canvas {
             width: 100% !important;
             height: 100% !important;
+            aspect-ratio: 1; /* Соотношение сторон 1:1 */
         }
+
+    h6 {
+        margin-bottom: 5px; /* Уменьшает отступ снизу заголовка */
+    }
 
     .table {
         width: 100%;
