@@ -14,67 +14,83 @@ namespace перенос_бд_на_Web.Services
             _context = context;
         }
 
-        public async Task<(ActivePowerImbalance, string)> GetMaxActivePowerImbalanceAsync()
+        public class PowerImbalanceMetrics
         {
-            var maxImbalance = await _context.active_power_imbalance
+            public double MaxActivePowerImbalance { get; set; }
+            public double MaxReactivePowerImbalance { get; set; }
+            public double AverageTotalActivePowerImbalance { get; set; }
+            public double AverageTotalReactivePowerImbalance { get; set; }
+        }
+
+        // Метод для расчета метрик одного набора
+        public async Task<PowerImbalanceMetrics> CalculateMetricsAsync(IEnumerable<string> slicePaths)
+        {
+            // Получаем все SliceID для переданных путей
+            var sliceIds = await _context.slices
+                .Where(s => slicePaths.Contains(s.SlicePath))
+                .Select(s => s.SliceID) // Извлекаем только SliceID
+                .ToListAsync();
+
+            // Фильтрация данных активной мощности
+            var activePowerData = await _context.active_power_imbalance
+                .Where(api => sliceIds.Contains(api.SliceID_p)) // Сравнение с SliceID_p
+                .ToListAsync();
+
+            // Фильтрация данных реактивной мощности
+            var reactivePowerData = await _context.reactive_power_imbalance
+                .Where(rpi => sliceIds.Contains(rpi.SliceID_q)) // Сравнение с SliceID_q
+                .ToListAsync();
+
+            // Максимальное отклонение активной мощности
+            var maxActivePowerImbalance = activePowerData
                 .OrderByDescending(api => Math.Abs(api.p_neb_p))
-                .FirstOrDefaultAsync();
+                .Select(api => Math.Abs(api.p_neb_p))
+                .FirstOrDefault();
 
-            if (maxImbalance == null)
-            {
-                return (null, null);
-            }
-
-            var slice = await _context.slices
-                .FirstOrDefaultAsync(s => s.SliceID == maxImbalance.SliceID_p);
-
-            return (maxImbalance, slice?.SliceName);
-        }
-
-        public async Task<(ReactivePowerImbalance, string)> GetMaxReactivePowerImbalanceAsync()
-        {
-            var maxImbalance = await _context.reactive_power_imbalance
+            // Максимальное отклонение реактивной мощности
+            var maxReactivePowerImbalance = reactivePowerData
                 .OrderByDescending(rpi => Math.Abs(rpi.q_neb_q))
-                .FirstOrDefaultAsync();
+                .Select(rpi => Math.Abs(rpi.q_neb_q))
+                .FirstOrDefault();
 
-            if (maxImbalance == null)
-            {
-                return (null, null);
-            }
-
-            var slice = await _context.slices
-                .FirstOrDefaultAsync(s => s.SliceID == maxImbalance.SliceID_q);
-
-            return (maxImbalance, slice?.SliceName);
-        }
-        public async Task<double> GetAverageTotalActivePowerImbalanceAsync()
-        {
-            var sliceCount = await _context.active_power_imbalance
+            // Среднее отклонение активной мощности
+            var activeSliceCount = activePowerData
                 .Select(api => api.SliceID_p)
                 .Distinct()
-                .CountAsync();
+                .Count();
 
-            var totalImbalance = await _context.active_power_imbalance
+            var totalActiveImbalance = activePowerData
                 .GroupBy(api => api.SliceID_p)
                 .Select(g => g.Sum(api => api.p_neb_p))
-                .SumAsync();
+                .Sum();
 
-            return totalImbalance / sliceCount;
-        }
+            double averageActiveImbalance = activeSliceCount > 0
+                ? totalActiveImbalance / activeSliceCount
+                : 0;
 
-        public async Task<double> GetAverageTotalReactivePowerImbalanceAsync()
-        {
-            var sliceCount = await _context.reactive_power_imbalance
+            // Среднее отклонение реактивной мощности
+            var reactiveSliceCount = reactivePowerData
                 .Select(rpi => rpi.SliceID_q)
                 .Distinct()
-                .CountAsync();
+                .Count();
 
-            var totalImbalance = await _context.reactive_power_imbalance
+            var totalReactiveImbalance = reactivePowerData
                 .GroupBy(rpi => rpi.SliceID_q)
                 .Select(g => g.Sum(rpi => rpi.q_neb_q))
-                .SumAsync();
+                .Sum();
 
-            return totalImbalance / sliceCount;
+            double averageReactiveImbalance = reactiveSliceCount > 0
+                ? totalReactiveImbalance / reactiveSliceCount
+                : 0;
+
+            // Возврат метрик
+            return new PowerImbalanceMetrics
+            {
+                MaxActivePowerImbalance = maxActivePowerImbalance,
+                MaxReactivePowerImbalance = maxReactivePowerImbalance,
+                AverageTotalActivePowerImbalance = averageActiveImbalance,
+                AverageTotalReactivePowerImbalance = averageReactiveImbalance
+            };
         }
     }
 }

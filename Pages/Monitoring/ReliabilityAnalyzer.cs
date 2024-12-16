@@ -46,8 +46,6 @@ namespace перенос_бд_на_Web
                 {
                     try
                     {
-                        
-
                         bool isSuccessful = AnalyzeFile(filePath, rastr);
 
                         if (isSuccessful)

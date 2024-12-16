@@ -24,8 +24,8 @@
     private string errorMessage;
     private bool isChartReady = false;
 
-    private (ActivePowerImbalance imbalance, string sliceName) maxActivePowerImbalance;
-    private (ReactivePowerImbalance imbalance, string sliceName) maxReactivePowerImbalance;
+    private double maxActivePowerImbalance;
+    private double maxReactivePowerImbalance;
     private double averageTotalActivePowerImbalance;
     private double averageTotalReactivePowerImbalance;
     private double averageDeviation;
@@ -34,6 +34,27 @@
     private string firstSelectedSet;
     private string secondSelectedSet;
     private List<string> uniqueExperimentLabels;
+
+
+
+
+
+    private double firstMaxActivePowerImbalance;
+    private double firstMaxReactivePowerImbalance;
+    private double firstAverageTotalActivePowerImbalance;
+    private double firstAverageTotalReactivePowerImbalance;
+    private double firstAverageDeviation;
+    private double firstStandardDeviation;
+
+    private double secondMaxActivePowerImbalance;
+    private double secondMaxReactivePowerImbalance;
+    private double secondAverageTotalActivePowerImbalance;
+    private double secondAverageTotalReactivePowerImbalance;
+    private double secondAverageDeviation;
+    private double secondStandardDeviation;
+
+
+
 
 
     private (int successfulCount, int totalCount) firstSetResults;
@@ -73,11 +94,19 @@
             return;
         }
 
+        if (string.IsNullOrEmpty(firstSelectedSet) || string.IsNullOrEmpty(secondSelectedSet))
+        {
+            errorMessage = "Необходимо выбрать оба набора для сравнения.";
+            return;
+        }
+
         isProcessing = true;
         cancellationTokenSource = new CancellationTokenSource();
         errorMessage = null;
+
         try
         {
+            // Загрузка путей для наборов
             var filePathsFirstSet = await sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, firstSelectedSet);
             var filePathsSecondSet = await sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, secondSelectedSet);
 
@@ -87,49 +116,18 @@
                 return;
             }
 
-            if (string.IsNullOrEmpty(firstSelectedSet) || string.IsNullOrEmpty(secondSelectedSet))
-            {
-                errorMessage = "Необходимо выбрать оба набора для сравнения.";
-                return;
-            }
-
-            // Анализ первого набора
-            var firstResult = await ReliabilityAnalyzer.AnalyzeReliabilityData(
-                startDateTime.Value,
-                endDateTime.Value,
-                filePathsFirstSet,
-                UpdateProgress,
-                cancellationTokenSource.Token
-            );
-
-            // Анализ второго набора
-            var secondResult = await ReliabilityAnalyzer.AnalyzeReliabilityData(
-                startDateTime.Value,
-                endDateTime.Value,
-                filePathsSecondSet,
-                UpdateProgress,
-                cancellationTokenSource.Token
-            );
+            // Анализ данных обоих наборов
+            firstSetResults = await AnalyzeSetDataAsync(filePathsFirstSet);
+            // Загрузка метрик первого набора
+            await LoadMetricsAsync(filePathsFirstSet, true);
+            secondSetResults = await AnalyzeSetDataAsync(filePathsSecondSet);
+            // Загрузка метрик второго набора
+            await LoadMetricsAsync(filePathsSecondSet, false);
 
 
-            // Сохраняем результаты
-            firstSetResults = (firstResult.successfulCount, firstResult.totalCount);
-            secondSetResults = (secondResult.successfulCount, secondResult.totalCount);
 
-            // successfulCount = result.successfulCount;
-            // totalCount = result.totalCount;
 
             isChartReady = true; // Флаг для отрисовки диаграмм
-
-            maxActivePowerImbalance = await PowerImbalanceService.GetMaxActivePowerImbalanceAsync();
-            maxReactivePowerImbalance = await PowerImbalanceService.GetMaxReactivePowerImbalanceAsync();
-            averageTotalActivePowerImbalance = await PowerImbalanceService.GetAverageTotalActivePowerImbalanceAsync();
-            averageTotalReactivePowerImbalance = await PowerImbalanceService.GetAverageTotalReactivePowerImbalanceAsync();
-
-            averageDeviation = await CalculateAverageDeviationAsync();
-            standardDeviation = await CalculateStandardDeviationAsync();
-
-            isChartReady = true; // Устанавливаем флаг для отображения графика
         }
         catch (Exception ex)
         {
@@ -142,7 +140,47 @@
             cancellationTokenSource = null;
         }
 
-        StateHasChanged(); // Обновляем интерфейс
+        StateHasChanged(); // Обновление интерфейса
+    }
+
+
+    private async Task LoadMetricsAsync(IEnumerable<string> slicePaths, bool isFirstSet)
+    {
+        // Обращение к PowerImbalanceService для расчета метрик
+        var metrics = await PowerImbalanceService.CalculateMetricsAsync(slicePaths);
+
+        if (isFirstSet)
+        {
+            firstMaxActivePowerImbalance = metrics.MaxActivePowerImbalance;
+            firstMaxReactivePowerImbalance = metrics.MaxReactivePowerImbalance;
+            firstAverageTotalActivePowerImbalance = metrics.AverageTotalActivePowerImbalance;
+            firstAverageTotalReactivePowerImbalance = metrics.AverageTotalReactivePowerImbalance;
+
+            firstAverageDeviation = await CalculateAverageDeviationAsync();
+            firstStandardDeviation = await CalculateStandardDeviationAsync();
+        }
+        else
+        {
+            secondMaxActivePowerImbalance = metrics.MaxActivePowerImbalance;
+            secondMaxReactivePowerImbalance = metrics.MaxReactivePowerImbalance;
+            secondAverageTotalActivePowerImbalance = metrics.AverageTotalActivePowerImbalance;
+            secondAverageTotalReactivePowerImbalance = metrics.AverageTotalReactivePowerImbalance;
+
+            secondAverageDeviation = await CalculateAverageDeviationAsync();
+            secondStandardDeviation = await CalculateStandardDeviationAsync();
+        }
+    }
+
+    private async Task<(int successfulCount, int totalCount)> AnalyzeSetDataAsync(List<string> filePaths)
+    {
+        var result = await ReliabilityAnalyzer.AnalyzeReliabilityData(
+            startDateTime.Value,
+            endDateTime.Value,
+            filePaths,
+            UpdateProgress,
+            cancellationTokenSource.Token);
+
+        return (result.successfulCount, result.totalCount);
     }
 
     private async Task<double> CalculateAverageDeviationAsync()
@@ -254,7 +292,9 @@
 @if (isProcessing)
 {
     <div class="progress mt-4">
-        <div class="progress-bar" role="progressbar" style="width: @currentProgress%" aria-valuenow="@currentProgress" aria-valuemin="0" aria-valuemax="100">@currentProgress%</div>
+        <div class="progress-bar" role="progressbar" style="width: @currentProgress%" 
+        aria-valuenow="@currentProgress" aria-valuemin="0" aria-valuemax="100">
+        @currentProgress%</div>
     </div>
 }
 
@@ -288,42 +328,38 @@
     <p class="text-danger">@errorMessage</p>
 }
 
-@if (maxActivePowerImbalance.imbalance != null || maxReactivePowerImbalance.imbalance != null || averageTotalActivePowerImbalance != 0 || averageTotalReactivePowerImbalance != 0 || averageDeviation != 0 || standardDeviation != 0)
+@if (maxActivePowerImbalance != 0 || maxReactivePowerImbalance != 0 || averageTotalActivePowerImbalance != 0 || averageTotalReactivePowerImbalance != 0 || averageDeviation != 0 || standardDeviation != 0)
 {
     <table class="table mt-4">
         <thead>
             <tr>
                 <th>Показатель</th>
-                <th>Значение</th>
+                <th>@firstSelectedSet</th>
+                <th>@secondSelectedSet</th>
             </tr>
         </thead>
         <tbody>
-            @if (maxActivePowerImbalance.imbalance != null)
+            @if (maxActivePowerImbalance != 0)
             {
                 <tr>
                     <td>Максимальный небаланс по активной мощности</td>
-                    <td>
-                        Наименование среза: @maxActivePowerImbalance.sliceName<br />
-                        Наименование узла: @maxActivePowerImbalance.imbalance.name_p<br />
-                        Небаланс: @Math.Round(maxActivePowerImbalance.imbalance.p_neb_p, 3)
-                    </td>
+                    <td>@Math.Round(maxActivePowerImbalance, 3)</td>
+                    <td>@Math.Round(maxActivePowerImbalance, 3)</td>
                 </tr>
             }
-            @if (maxReactivePowerImbalance.imbalance != null)
+            @if (maxReactivePowerImbalance != 0)
             {
                 <tr>
                     <td>Максимальный небаланс по реактивной мощности</td>
-                    <td>
-                        Наименование среза: @maxReactivePowerImbalance.sliceName<br />
-                        Наименование узла: @maxReactivePowerImbalance.imbalance.name_q<br />
-                        Небаланс: @Math.Round(maxReactivePowerImbalance.imbalance.q_neb_q, 3)
-                    </td>
+                    <td>@Math.Round(maxReactivePowerImbalance, 3)</td>
+                    <td>@Math.Round(maxReactivePowerImbalance, 3)</td>
                 </tr>
             }
             @if (averageTotalActivePowerImbalance != 0)
             {
                 <tr>
                     <td>Усредненный суммарный небаланс по активной мощности</td>
+                    <td>@Math.Round(averageTotalActivePowerImbalance, 3)</td>
                     <td>@Math.Round(averageTotalActivePowerImbalance, 3)</td>
                 </tr>
             }
@@ -332,19 +368,22 @@
                 <tr>
                     <td>Усредненный суммарный небаланс по реактивной мощности</td>
                     <td>@Math.Round(averageTotalReactivePowerImbalance, 3)</td>
+                    <td>@Math.Round(averageTotalReactivePowerImbalance, 3)</td>
                 </tr>
             }
             @if (averageDeviation != 0)
             {
                 <tr>
-                    <td>Среднее по выборке математическое ожидание отклонения измеренного от оцененного</td>
+                    <td>Среднее отклонение</td>
+                    <td>@Math.Round(averageDeviation, 3)</td>
                     <td>@Math.Round(averageDeviation, 3)</td>
                 </tr>
             }
             @if (standardDeviation != 0)
             {
                 <tr>
-                    <td>Среднеквадратичное отклонение измеренных значений</td>
+                    <td>Стандартное отклонение</td>
+                    <td>@Math.Round(standardDeviation, 3)</td>
                     <td>@Math.Round(standardDeviation, 3)</td>
                 </tr>
             }
