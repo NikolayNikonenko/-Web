@@ -37,7 +37,8 @@ namespace перенос_бд_на_Web.Services
             List<TMValues> tmValues,
             string experimentalKit,
             Action<int> progressCallback,
-            Action<bool> setStatusBarVisible
+            Action<bool> setStatusBarVisible,
+            bool applyFGO
             )
         {
             setStatusBarVisible(true); // Отображаем статус-бар
@@ -71,7 +72,7 @@ namespace перенос_бд_на_Web.Services
                     try
                     {
                         _rastr.Load(RG_KOD.RG_REPL, path, "");
-                        bool hasChanges = await ProcessFile(path, orderIndex, tmValues,  actions, context, telemetryMonitoringService, experimentLabel);
+                        bool hasChanges = await ProcessFile(path, orderIndex, tmValues,  actions, context, telemetryMonitoringService, experimentLabel, applyFGO);
 
                         if (hasChanges)
                         {
@@ -118,7 +119,8 @@ namespace перенос_бд_на_Web.Services
         List<VerificationAction> actions,
         ApplicationContext context,
         TelemetryMonitoringService telemetryMonitoringService,
-        string experimentLabel)
+        string experimentLabel,
+        bool applyFGO)
         {
             // Реализация обработки файла и возврат флага изменений
             bool hasChanges = false;
@@ -144,7 +146,7 @@ namespace перенос_бд_на_Web.Services
 
             if (hasChanges)
             {
-                await SaveSlice(path, orderIndex, tMValues, context, telemetryMonitoringService, experimentLabel);
+                await SaveSlice(path, orderIndex, tMValues, context, telemetryMonitoringService, experimentLabel, applyFGO);
             }
 
             return hasChanges;
@@ -156,7 +158,8 @@ namespace перенос_бд_на_Web.Services
             List<TMValues> tmValues,
             ApplicationContext context,
             TelemetryMonitoringService telemetryMonitoringService,
-            string experimentLabel
+            string experimentLabel,
+            bool applyFGO
             )
         {
             try
@@ -164,6 +167,15 @@ namespace перенос_бд_на_Web.Services
 
                 // Парсим путь и создаем директорию
                 var (saveFilePath, subFolder2) = PrepareSaveDirectory(path, experimentLabel);
+
+                if (applyFGO)
+                {
+                    // Фильтр
+                    COMCKLib.ITI m_TI = new COMCKLib.TI();
+                    object SARes = null;
+                    int Res = 0;
+                    Res = m_TI.FiltrTI_1(_rastr, ref SARes);
+                }
 
                 // Оценка состояния перед сохранением данных
                 _rastr.opf("s");

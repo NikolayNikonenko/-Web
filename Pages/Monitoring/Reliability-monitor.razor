@@ -35,10 +35,6 @@
     private string secondSelectedSet;
     private List<string> uniqueExperimentLabels;
 
-
-
-
-
     private double firstMaxActivePowerImbalance;
     private double firstMaxReactivePowerImbalance;
     private double firstAverageTotalActivePowerImbalance;
@@ -52,10 +48,6 @@
     private double secondAverageTotalReactivePowerImbalance;
     private double secondAverageDeviation;
     private double secondStandardDeviation;
-
-
-
-
 
     private (int successfulCount, int totalCount) firstSetResults;
     private (int successfulCount, int totalCount) secondSetResults;
@@ -156,8 +148,8 @@
             firstAverageTotalActivePowerImbalance = metrics.AverageTotalActivePowerImbalance;
             firstAverageTotalReactivePowerImbalance = metrics.AverageTotalReactivePowerImbalance;
 
-            firstAverageDeviation = await CalculateAverageDeviationAsync();
-            firstStandardDeviation = await CalculateStandardDeviationAsync();
+            firstAverageDeviation = await CalculateAverageDeviationAsync(slicePaths);
+            firstStandardDeviation = await CalculateStandardDeviationAsync(slicePaths);
         }
         else
         {
@@ -166,8 +158,8 @@
             secondAverageTotalActivePowerImbalance = metrics.AverageTotalActivePowerImbalance;
             secondAverageTotalReactivePowerImbalance = metrics.AverageTotalReactivePowerImbalance;
 
-            secondAverageDeviation = await CalculateAverageDeviationAsync();
-            secondStandardDeviation = await CalculateStandardDeviationAsync();
+            secondAverageDeviation = await CalculateAverageDeviationAsync(slicePaths);
+            secondStandardDeviation = await CalculateStandardDeviationAsync(slicePaths);
         }
     }
 
@@ -183,22 +175,53 @@
         return (result.successfulCount, result.totalCount);
     }
 
-    private async Task<double> CalculateAverageDeviationAsync()
+    private async Task<double> CalculateAverageDeviationAsync(IEnumerable<string> slicePaths)
     {
-        return await DbContext.TMValues
-            .Select(v => v.IzmerValue - v.OcenValue)
-            .AverageAsync();
-    }
+        // Шаг 1: Фильтрация данных через связь TMValues и Slices
+        var filteredData = DbContext.TMValues
+            .Join(DbContext.slices,           // Присоединяем таблицу Slices
+                  tm => tm.SliceID,           // Поле связи из TMValues
+                  slice => slice.SliceID,          // Поле связи из Slices
+                  (tm, slice) => new { tm, slice }) // Результат - объединённые записи
+            .Where(joined => slicePaths.Contains(joined.slice.SlicePath)) // Фильтрация по путям
+            .Select(joined => joined.tm);     // Возвращаем только записи TMValues
 
-    private async Task<double> CalculateStandardDeviationAsync()
-    {
-        var deviations = await DbContext.TMValues
-            .Select(v => v.IzmerValue)
+        // Шаг 2: Группировка по уникальным сочетаниям IndexTM и Id1
+        var averageDeviations = await filteredData
+            .GroupBy(v => new { v.IndexTM, v.Id1 }) // Группировка по IndexTM и Id1
+            .Select(group => group.Average(v => v.IzmerValue - v.OcenValue)) // Среднее отклонение для каждой группы
             .ToListAsync();
 
-        var mean = deviations.Average();
-        var sumOfSquaresOfDifferences = deviations.Select(val => (val - mean) * (val - mean)).Sum();
-        return Math.Sqrt(sumOfSquaresOfDifferences / deviations.Count);
+        // Шаг 3: Рассчитываем общее среднее: сумма всех средних значений / количество уникальных групп
+        double totalSum = averageDeviations.Sum(); // Суммируем все средние значения
+        int groupCount = averageDeviations.Count; // Количество уникальных групп
+
+        // Шаг 4: Возвращаем итоговое значение
+        return groupCount > 0 ? totalSum / groupCount : 0.0; // Проверка деления на 0
+    }
+
+    private async Task<double> CalculateStandardDeviationAsync(IEnumerable<string> slicePaths)
+    {
+        var query = DbContext.TMValues
+            .Join(DbContext.slices,
+                  tm => tm.SliceID,
+                  slice => slice.SliceID,
+                  (tm, slice) => new { tm.IzmerValue, slice.SlicePath })
+            .Where(joined => slicePaths.Contains(joined.SlicePath))
+            .Select(joined => joined.IzmerValue);
+
+        // Среднее значение
+        var mean = await query.AverageAsync();
+
+        // Сумма квадратов отклонений
+        var sumOfSquaresOfDifferences = await query
+            .Select(val => (val - mean) * (val - mean))
+            .SumAsync();
+
+        // Количество значений
+        var count = await query.CountAsync();
+
+        return count > 0 ? Math.Sqrt(sumOfSquaresOfDifferences / count) : 0.0;
     }
 
     private async Task DrawChart()
@@ -298,7 +321,7 @@
     </div>
 }
 
-@if (firstSetResults.totalCount > 0 || secondSetResults.totalCount > 0)
+@if (firstSetResults.totalCount > 0 && secondSetResults.totalCount > 0)
 {
     <div class="mt-4 text-center">
         <h5>Расчетный интервал: от @startDateTime до @endDateTime</h5>
@@ -320,86 +343,67 @@
                 <p>Успешность ОС: @GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount)%</p>
             </div>
         </div>
+
+        <table class="table mt-4">
+            <thead>
+                <tr>
+                    <th>Показатель</th>
+                    <th>Единицы измерения</th>
+                    <th>@firstSelectedSet</th>
+                    <th>@secondSelectedSet</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Максимальный небаланс по активной мощности</td>
+                    <td>МВт</td>
+                    <td>@Math.Round(firstMaxActivePowerImbalance, 3)</td>
+                    <td>@Math.Round(secondMaxActivePowerImbalance, 3)</td>
+                </tr>
+                <tr>
+                    <td>Максимальный небаланс по реактивной мощности</td>
+                    <td>МВАр</td>
+                    <td>@Math.Round(firstMaxReactivePowerImbalance, 3)</td>
+                    <td>@Math.Round(secondMaxReactivePowerImbalance, 3)</td>
+                </tr>
+                <tr>
+                    <td>Усредненный суммарный небаланс по активной мощности</td>
+                    <td>МВт</td>
+                    <td>@Math.Round(firstAverageTotalActivePowerImbalance, 3)</td>
+                    <td>@Math.Round(secondAverageTotalActivePowerImbalance, 3)</td>
+                </tr>
+                <tr>
+                    <td>Усредненный суммарный небаланс по реактивной мощности</td>
+                    <td>МВАр</td>
+                    <td>@Math.Round(firstAverageTotalReactivePowerImbalance, 3)</td>
+                    <td>@Math.Round(secondAverageTotalReactivePowerImbalance, 3)</td>
+                </tr>
+                <tr>
+                    <td>Среднее математическое ожидание отклонения измеренного от оцененного</td>
+                    <td>(о.е.)</td>
+                    <td>@Math.Round(firstAverageDeviation, 3)</td>
+                    <td>@Math.Round(secondAverageDeviation, 3)</td>
+                </tr>
+                <tr>
+                    <td>Среднеквадратичное отклонение измеренных значений</td>
+                    <td>(о.е.)</td>
+                    <td>@Math.Round(firstStandardDeviation, 3)</td>
+                    <td>@Math.Round(secondStandardDeviation, 3)</td>
+                </tr>
+                <tr>
+                    <td>Успешность ОС</td>
+                    <td>%</td>
+                    <td>@GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount)</td>
+                    <td>@GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount)</td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 }
 
 @if (!string.IsNullOrEmpty(errorMessage))
 {
     <p class="text-danger">@errorMessage</p>
-}
-
-@if (maxActivePowerImbalance != 0 || maxReactivePowerImbalance != 0 || averageTotalActivePowerImbalance != 0 || averageTotalReactivePowerImbalance != 0 || averageDeviation != 0 || standardDeviation != 0)
-{
-    <table class="table mt-4">
-        <thead>
-            <tr>
-                <th>Показатель</th>
-                <th>@firstSelectedSet</th>
-                <th>@secondSelectedSet</th>
-            </tr>
-        </thead>
-        <tbody>
-            @if (maxActivePowerImbalance != 0)
-            {
-                <tr>
-                    <td>Максимальный небаланс по активной мощности</td>
-                    <td>@Math.Round(maxActivePowerImbalance, 3)</td>
-                    <td>@Math.Round(maxActivePowerImbalance, 3)</td>
-                </tr>
-            }
-            @if (maxReactivePowerImbalance != 0)
-            {
-                <tr>
-                    <td>Максимальный небаланс по реактивной мощности</td>
-                    <td>@Math.Round(maxReactivePowerImbalance, 3)</td>
-                    <td>@Math.Round(maxReactivePowerImbalance, 3)</td>
-                </tr>
-            }
-            @if (averageTotalActivePowerImbalance != 0)
-            {
-                <tr>
-                    <td>Усредненный суммарный небаланс по активной мощности</td>
-                    <td>@Math.Round(averageTotalActivePowerImbalance, 3)</td>
-                    <td>@Math.Round(averageTotalActivePowerImbalance, 3)</td>
-                </tr>
-            }
-            @if (averageTotalReactivePowerImbalance != 0)
-            {
-                <tr>
-                    <td>Усредненный суммарный небаланс по реактивной мощности</td>
-                    <td>@Math.Round(averageTotalReactivePowerImbalance, 3)</td>
-                    <td>@Math.Round(averageTotalReactivePowerImbalance, 3)</td>
-                </tr>
-            }
-            @if (averageDeviation != 0)
-            {
-                <tr>
-                    <td>Среднее отклонение</td>
-                    <td>@Math.Round(averageDeviation, 3)</td>
-                    <td>@Math.Round(averageDeviation, 3)</td>
-                </tr>
-            }
-            @if (standardDeviation != 0)
-            {
-                <tr>
-                    <td>Стандартное отклонение</td>
-                    <td>@Math.Round(standardDeviation, 3)</td>
-                    <td>@Math.Round(standardDeviation, 3)</td>
-                </tr>
-            }
-            @* <tr>
-        <div>
-        <h3>График 1</h3>
-        <p>Успешность: @GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount)%</p>
-        <!-- Код для графика 1 -->
-
-        <h3>График 2</h3>
-        <p>Успешность: @GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount)%</p>
-        <!-- Код для графика 2 -->
-        </div>
-        </tr> *@
-        </tbody>
-    </table>
 }
 
 <style>

@@ -80,6 +80,8 @@
 
     private List<string> availableValues = new List<string>();
 
+    private bool applyFgo { get; set; } = false;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
@@ -513,7 +515,8 @@
             tmValues,
             experimentalKit,
             UpdateProgress,
-            SetStatusBarVisible
+            SetStatusBarVisible,
+            applyFgo
         );
 
         // Очищаем выбранные действия и закрываем модальное окно
@@ -850,19 +853,23 @@
         <h5>Выбранные действия</h5>
         <h6>Выбранный интервал: от @startDate.Value.ToString("g") до @endDate.Value.ToString("g")</h6>
         <!-- Фильтр по экспериментам -->
-        @* @if (IsDropdownVisible)
-        { *@
-            <div class="form-group">
-                <label for="experimentSelect">Выбрать набор для применения изменений:</label>
-                <select id="experimentSelect" class="form-select" @onchange="HandleExperimentChange">
-                    @foreach (var experiment in availableValues)
-                    {
-                        <option value="@experiment">@experiment</option>
-                    }
-                </select>
-            </div>
-        @* } *@
 
+        <div class="form-group">
+            <label for="experimentSelect">Выбрать набор для применения изменений:</label>
+            <select id="experimentSelect" class="form-select" @onchange="HandleExperimentChange">
+                @foreach (var experiment in availableValues)
+                {
+                    <option value="@experiment">@experiment</option>
+                }
+            </select>
+        </div>
+
+        <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="applyFgoCheckbox" @bind="applyFgo">
+            <label class="form-check-label" for="applyFgoCheckbox">
+                Применять ФГО RastrWin3 при внесении изменений
+            </label>
+        </div>
 
         <!-- Таблица с выбранными действиями -->
         <table class="table table-bordered mt-3">
