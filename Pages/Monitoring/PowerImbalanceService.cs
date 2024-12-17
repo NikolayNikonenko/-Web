@@ -7,11 +7,13 @@ namespace перенос_бд_на_Web.Services
 {
     public class PowerImbalanceService
     {
-        private readonly ApplicationContext _context;
+        //private readonly ApplicationContext _context;
 
-        public PowerImbalanceService(ApplicationContext context)
+        private readonly IDbContextFactory<ApplicationContext> _contextFactory;
+
+        public PowerImbalanceService(IDbContextFactory<ApplicationContext> contextFactory)
         {
-            _context = context;
+            _contextFactory = contextFactory;
         }
 
         public class PowerImbalanceMetrics
@@ -25,6 +27,7 @@ namespace перенос_бд_на_Web.Services
         // Метод для расчета метрик одного набора
         public async Task<PowerImbalanceMetrics> CalculateMetricsAsync(IEnumerable<string> slicePaths)
         {
+            await using var _context = _contextFactory.CreateDbContext();
             // Получаем все SliceID для переданных путей
             var sliceIds = await _context.slices
                 .Where(s => slicePaths.Contains(s.SlicePath))

@@ -3,14 +3,17 @@
 @using перенос_бд_на_Web.Data
 @using перенос_бд_на_Web.Services
 @using Microsoft.EntityFrameworkCore
-@inject ApplicationContext DbContext
+@* @inject ApplicationContext DbContext *@
 @inject SliceService sliceService
 @inject IJSRuntime JS
 @inject ReliabilityAnalyzer ReliabilityAnalyzer
 @inject PowerImbalanceService PowerImbalanceService
+@inject IDbContextFactory<ApplicationContext> ContextFactory
 @implements IDisposable
 
 @code {
+    private readonly IDbContextFactory<ApplicationContext> _contextFactory;
+
     private bool isProcessing = false;
     private int successfulCount = 0;
     private int totalCount = 0;
@@ -52,10 +55,16 @@
     private (int successfulCount, int totalCount) firstSetResults;
     private (int successfulCount, int totalCount) secondSetResults;
 
+    private int firstSetProgress = 0;
+    private int secondSetProgress = 0;
+
+
+
     protected override async Task OnInitializedAsync()
     {
+        await using var context = ContextFactory.CreateDbContext();
         // Загружаем уникальные значения из колонки experiment_label
-        uniqueExperimentLabels = await DbContext.slices
+        uniqueExperimentLabels = await context.slices
             .Select(s => s.experiment_label)
             .Distinct()
             .ToListAsync();
@@ -98,9 +107,20 @@
 
         try
         {
-            // Загрузка путей для наборов
-            var filePathsFirstSet = await sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, firstSelectedSet);
-            var filePathsSecondSet = await sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, secondSelectedSet);
+            // Параллельная загрузка путей для обоих наборов
+            var filePathsTasks = new[]
+            {
+                sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, firstSelectedSet),
+                sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, secondSelectedSet)
+            };
+            // // Загрузка путей для наборов
+            // var filePathsFirstSet = await sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, firstSelectedSet);
+            // var filePathsSecondSet = await sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, secondSelectedSet);
+
+            var filePathsResults = await Task.WhenAll(filePathsTasks);
+            var filePathsFirstSet = filePathsResults[0];
+            var filePathsSecondSet = filePathsResults[1];
+
 
             if (filePathsFirstSet.Count == 0 || filePathsSecondSet.Count == 0)
             {
@@ -108,16 +128,33 @@
                 return;
             }
 
-            // Анализ данных обоих наборов
-            firstSetResults = await AnalyzeSetDataAsync(filePathsFirstSet);
-            // Загрузка метрик первого набора
-            await LoadMetricsAsync(filePathsFirstSet, true);
-            secondSetResults = await AnalyzeSetDataAsync(filePathsSecondSet);
-            // Загрузка метрик второго набора
-            await LoadMetricsAsync(filePathsSecondSet, false);
+            // Параллельный анализ данных обоих наборов
+            var analyzeTasks = new[]
+            {
+                Task.Run(() => AnalyzeSetDataAsync(filePathsFirstSet,1)),
+                Task.Run(() => AnalyzeSetDataAsync(filePathsSecondSet,2))
+            };
 
+            var analyzeResults = await Task.WhenAll(analyzeTasks);
+            firstSetResults = analyzeResults[0];
+            secondSetResults = analyzeResults[1];
 
+            // Параллельная загрузка метрик обоих наборов
+            var loadMetricsTasks = new[]
+            {
+                Task.Run(() => LoadMetricsAsync(filePathsFirstSet, true)),
+                Task.Run(() => LoadMetricsAsync(filePathsSecondSet, false))
+            };
 
+            await Task.WhenAll(loadMetricsTasks);
+
+            // // Анализ данных обоих наборов
+            // firstSetResults = await AnalyzeSetDataAsync(filePathsFirstSet);
+            // // Загрузка метрик первого набора
+            // await LoadMetricsAsync(filePathsFirstSet, true);
+            // secondSetResults = await AnalyzeSetDataAsync(filePathsSecondSet);
+            // // Загрузка метрик второго набора
+            // await LoadMetricsAsync(filePathsSecondSet, false);
 
             isChartReady = true; // Флаг для отрисовки диаграмм
         }
@@ -139,6 +176,8 @@
     private async Task LoadMetricsAsync(IEnumerable<string> slicePaths, bool isFirstSet)
     {
         // Обращение к PowerImbalanceService для расчета метрик
+        await using var context = ContextFactory.CreateDbContext();
+
         var metrics = await PowerImbalanceService.CalculateMetricsAsync(slicePaths);
 
         if (isFirstSet)
@@ -163,23 +202,25 @@
         }
     }
 
-    private async Task<(int successfulCount, int totalCount)> AnalyzeSetDataAsync(List<string> filePaths)
+    private async Task<(int successfulCount, int totalCount)> AnalyzeSetDataAsync(List<string> filePaths, int setNumber)
     {
         var result = await ReliabilityAnalyzer.AnalyzeReliabilityData(
-            startDateTime.Value,
-            endDateTime.Value,
-            filePaths,
-            UpdateProgress,
-            cancellationTokenSource.Token);
+        startDateTime.Value,
+        endDateTime.Value,
+        filePaths,
+        progress => UpdateProgress(setNumber, progress),
+        cancellationTokenSource.Token);
 
         return (result.successfulCount, result.totalCount);
     }
 
     private async Task<double> CalculateAverageDeviationAsync(IEnumerable<string> slicePaths)
     {
+        await using var context = ContextFactory.CreateDbContext();
+
         // Шаг 1: Фильтрация данных через связь TMValues и Slices
-        var filteredData = DbContext.TMValues
-            .Join(DbContext.slices,           // Присоединяем таблицу Slices
+        var filteredData = context.TMValues
+            .Join(context.slices,           // Присоединяем таблицу Slices
                   tm => tm.SliceID,           // Поле связи из TMValues
                   slice => slice.SliceID,          // Поле связи из Slices
                   (tm, slice) => new { tm, slice }) // Результат - объединённые записи
@@ -202,8 +243,9 @@
 
     private async Task<double> CalculateStandardDeviationAsync(IEnumerable<string> slicePaths)
     {
-        var query = DbContext.TMValues
-            .Join(DbContext.slices,
+        await using var context = ContextFactory.CreateDbContext();
+        var query = context.TMValues
+            .Join(context.slices,
                   tm => tm.SliceID,
                   slice => slice.SliceID,
                   (tm, slice) => new { tm.IzmerValue, slice.SlicePath })
@@ -237,9 +279,15 @@
         }
     }
 
-    private void UpdateProgress(int progress)
+    private void UpdateProgress(int setNumber, int progress)
     {
-        currentProgress = progress;
+        if (setNumber == 1)
+            firstSetProgress = progress;
+        else
+            secondSetProgress = progress;
+
+        // Рассчитываем общий прогресс как среднее арифметическое
+        currentProgress = (firstSetProgress + secondSetProgress) / 2;
         InvokeAsync(StateHasChanged);
     }
 
@@ -315,9 +363,10 @@
 @if (isProcessing)
 {
     <div class="progress mt-4">
-        <div class="progress-bar" role="progressbar" style="width: @currentProgress%" 
-        aria-valuenow="@currentProgress" aria-valuemin="0" aria-valuemax="100">
-        @currentProgress%</div>
+        <div class="progress-bar" role="progressbar" style="width: @currentProgress%"
+             aria-valuenow="@currentProgress" aria-valuemin="0" aria-valuemax="100">
+            @currentProgress%
+        </div>
     </div>
 }
 

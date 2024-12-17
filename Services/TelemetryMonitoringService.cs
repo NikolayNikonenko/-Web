@@ -18,26 +18,30 @@ namespace перенос_бд_на_Web.Services
             try
             {
                 Console.WriteLine("Получаем последний эксперимент...");
-                var lastExperiment = await _context.TMValues
-                .OrderByDescending(tm => tm.experiment_label)
-                .Select(tm => tm.experiment_label)
-                .FirstOrDefaultAsync();
 
-                //var lastExperiment = "Экспернимент 1";
-                Console.WriteLine($"Последний эксперимент: {lastExperiment}");
+                // Загружаем все метки "Эксперимент" в память
+                var allExperiments = await _context.TMValues
+                    .Where(tm => tm.experiment_label.StartsWith("Эксперимент"))
+                    .Select(tm => tm.experiment_label)
+                    .ToListAsync();
 
-                if (lastExperiment == null)
+                // Извлекаем числовую часть, сортируем и находим последний номер
+                var lastExperimentNumber = allExperiments
+                    .Select(label => int.Parse(label.Split(' ')[1])) // Извлекаем число из метки
+                    .OrderByDescending(num => num) // Сортируем по убыванию
+                    .FirstOrDefault();
+
+                Console.WriteLine($"Последний эксперимент: {lastExperimentNumber}");
+
+                // Если данных нет, начинаем с "Эксперимент 1"
+                if (lastExperimentNumber == 0)
                 {
                     Console.WriteLine("Данных о последнем эксперименте нет.");
+                    return "Эксперимент 1";
                 }
 
-                if (lastExperiment != null && lastExperiment.StartsWith("Эксперимент"))
-                {
-                    var experimentNumber = int.Parse(lastExperiment.Split(' ')[1]);
-                    return $"Эксперимент {experimentNumber + 1}";
-                }
-
-                return "Эксперимент 1";
+                // Возвращаем следующий номер эксперимента
+                return $"Эксперимент {lastExperimentNumber + 1}";
             }
             catch (Exception ex)
             {

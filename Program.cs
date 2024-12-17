@@ -49,9 +49,10 @@ namespace перенос_бд_на_Web
             builder.Services.AddServerSideBlazor();
             builder.Services.AddSingleton<WeatherForecastService>();
             builder.Services.AddScoped<PowerImbalanceService>();
-            builder.Services.AddDbContext<ApplicationContext>(options =>
-            options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
-
+            //builder.Services.AddDbContext<ApplicationContext>(options =>
+            //options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+            builder.Services.AddDbContextFactory<ApplicationContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
             //builder.Services.AddScoped<SlicesService>();
 
@@ -73,6 +74,8 @@ namespace перенос_бд_на_Web
 
 
             builder.Services.AddScoped<ReliabilityAnalyzer>();
+
+
             builder.Services.AddLogging();
             builder.Services.AddControllers();
             builder.Services.AddSignalR();
