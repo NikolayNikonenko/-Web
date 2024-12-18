@@ -9,6 +9,7 @@
 @inject ReliabilityAnalyzer ReliabilityAnalyzer
 @inject PowerImbalanceService PowerImbalanceService
 @inject IDbContextFactory<ApplicationContext> ContextFactory
+@inject ReportService ReportService
 @implements IDisposable
 
 @code {
@@ -52,13 +53,13 @@
     private double secondAverageDeviation;
     private double secondStandardDeviation;
 
+    private bool isDataAddedToReport = false;
+
     private (int successfulCount, int totalCount) firstSetResults;
     private (int successfulCount, int totalCount) secondSetResults;
 
     private int firstSetProgress = 0;
     private int secondSetProgress = 0;
-
-
 
     protected override async Task OnInitializedAsync()
     {
@@ -302,6 +303,42 @@
         return totalCount > 0 ? Math.Round((double)successfulCount / totalCount * 100, 3) : 0;
     }
 
+    private async Task AddToReport()
+    {
+        // Проверка наличия данных перед вызовом сервиса
+        if (firstSetResults.totalCount > 0 && secondSetResults.totalCount > 0)
+        {
+            await ReportService.AddToReport(
+            firstSelectedSet, secondSelectedSet,
+            firstMaxActivePowerImbalance, secondMaxActivePowerImbalance,
+            firstMaxReactivePowerImbalance, secondMaxReactivePowerImbalance,
+            firstAverageTotalActivePowerImbalance, secondAverageTotalActivePowerImbalance,
+            firstAverageTotalReactivePowerImbalance, secondAverageTotalReactivePowerImbalance,
+            firstAverageDeviation, secondAverageDeviation,
+            firstStandardDeviation, secondStandardDeviation,
+            GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount),
+            GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount),
+            startDateTime, endDateTime
+            );
+        }
+        // Устанавливаем флаг, что данные добавлены
+        isDataAddedToReport = true;
+    }
+
+    private async Task SaveReport()
+    {
+        try
+        {
+            // Вызов метода для сохранения отчета
+            await ReportService.SaveReportAsync();
+        }
+        catch (Exception ex)
+        {
+            // Логирование ошибки
+            Console.WriteLine($"Ошибка при сохранении отчета: {ex.Message}");
+        }
+    }
+
 }
 
 <PageTitle>Мониторинг надежности</PageTitle>
@@ -447,6 +484,24 @@
                 </tr>
             </tbody>
         </table>
+
+        <!-- Кнопка "Добавить в отчет" -->
+        <div class="mt-4">
+            <button class="btn btn-success" @onclick="AddToReport">
+                Добавить в отчет
+            </button>
+        </div>
+
+        <!-- Если данные добавлены, показываем кнопку "Сформировать и сохранить отчет" -->
+        @if (isDataAddedToReport)
+        {
+            <div class="mt-4">
+                <button class="btn btn-primary" @onclick="SaveReport">
+                    Сформировать и сохранить отчет
+                </button>
+            </div>
+        }
+
     </div>
 }
 
