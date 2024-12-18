@@ -87,12 +87,12 @@ namespace перенос_бд_на_Web.Services
                 Body body = mainPart.Document.Body;
 
                 // Заголовок
-                AddParagraph(body, "Отчет по надежности", true, 16);
+                AddParagraph(body, "Отчет по надежности и достоверности", bold: true, fontSize: 14, alignment: JustificationValues.Center);
 
                 foreach (var data in _reportDataList)
                 {
                     // Подзаголовок
-                    AddParagraph(body, $"Расчетный интервал: от {data.StartDateTime} до {data.EndDateTime}", true, 12);
+                    AddParagraph(body, $"Расчетный интервал: от {data.StartDateTime} до {data.EndDateTime}", bold: false, fontSize: 12, alignment: JustificationValues.Left);
 
                     // Таблица
                     Table table = new Table();
@@ -124,33 +124,56 @@ namespace перенос_бд_на_Web.Services
             await Task.CompletedTask;
         }
 
-        private void AddParagraph(Body body, string text, bool bold, int fontSize)
+        private void AddParagraph(Body body, string text, bool bold, int fontSize, JustificationValues alignment)
         {
             Paragraph paragraph = new Paragraph();
+
+            // Добавляем выравнивание (центрирование или по левому краю)
+            ParagraphProperties paragraphProperties = new ParagraphProperties();
+            paragraphProperties.Justification = new Justification() { Val = alignment };
+
             Run run = new Run();
             RunProperties runProperties = new RunProperties();
 
             if (bold)
                 runProperties.Append(new Bold());
+
             runProperties.Append(new FontSize { Val = (fontSize * 2).ToString() });
 
             run.Append(runProperties);
             run.Append(new Text(text));
+
+            paragraph.Append(paragraphProperties);
             paragraph.Append(run);
+
             body.Append(paragraph);
         }
 
         private TableCell CreateTableCell(string text, bool bold)
         {
             TableCell cell = new TableCell();
+
+            // Добавляем выравнивание по центру для параграфа
             Paragraph paragraph = new Paragraph();
+            ParagraphProperties paragraphProperties = new ParagraphProperties();
+            paragraphProperties.Justification = new Justification() { Val = JustificationValues.Center };
+
             Run run = new Run();
             if (bold)
                 run.Append(new RunProperties(new Bold()));
 
             run.Append(new Text(text));
+
+            paragraph.Append(paragraphProperties); // Применяем выравнивание по центру
             paragraph.Append(run);
+
             cell.Append(paragraph);
+
+            // Дополнительно выравниваем содержимое ячейки по вертикали по центру
+            TableCellProperties cellProperties = new TableCellProperties();
+            cellProperties.Append(new TableCellVerticalAlignment { Val = TableVerticalAlignmentValues.Center });
+            cell.Append(cellProperties);
+
             return cell;
         }
 

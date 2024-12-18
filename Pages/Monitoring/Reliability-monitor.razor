@@ -486,7 +486,7 @@
         </table>
 
         <!-- Кнопка "Добавить в отчет" -->
-        <div class="mt-4">
+        <div class="mt-4 mb-4">
             <button class="btn btn-success" @onclick="AddToReport">
                 Добавить в отчет
             </button>
@@ -495,7 +495,7 @@
         <!-- Если данные добавлены, показываем кнопку "Сформировать и сохранить отчет" -->
         @if (isDataAddedToReport)
         {
-            <div class="mt-4">
+            <div class="mt-4 mb-4">
                 <button class="btn btn-primary" @onclick="SaveReport">
                     Сформировать и сохранить отчет
                 </button>
