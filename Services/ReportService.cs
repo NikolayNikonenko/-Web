@@ -1,9 +1,11 @@
-﻿using System.IO;
-using System.Threading.Tasks;
-using Aspose.Words;
-using Aspose.Words.Tables;
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 
 namespace перенос_бд_на_Web.Services
 {
@@ -76,72 +78,102 @@ namespace перенос_бд_на_Web.Services
             string filePath = Path.Combine("D:\\учеба\\магистратура\\3 курс\\диплом ит\\мое\\тест отчеты",
                             $"Отчет_{DateTime.Now:yyyyMMdd_HHmmss}.docx");
 
-            // Создание документа
-            Document document = new Document();
-            DocumentBuilder builder = new DocumentBuilder(document);
-
-            // Заголовок
-            builder.Font.Size = 16;
-            builder.Font.Bold = true;
-            builder.ParagraphFormat.Alignment = ParagraphAlignment.Center;
-            builder.Writeln("Отчет по надежности");
-            builder.ParagraphFormat.ClearFormatting();
-
-            foreach (var data in _reportDataList)
+            using (WordprocessingDocument wordDoc = WordprocessingDocument.Create(filePath, WordprocessingDocumentType.Document))
             {
-                // Подзаголовок
-                builder.Font.Size = 12;
-                builder.Font.Bold = true;
-                builder.Writeln($"Расчетный интервал: от {data.StartDateTime} до {data.EndDateTime}");
-                builder.ParagraphFormat.ClearFormatting();
+                // Добавляем основной документ
+                MainDocumentPart mainPart = wordDoc.AddMainDocumentPart();
+                mainPart.Document = new Document(new Body());
 
-                // Создание таблицы
-                Table table = builder.StartTable();
+                Body body = mainPart.Document.Body;
 
-                // Заголовок таблицы
-                AddCellToTable(builder, "Показатель", true);
-                AddCellToTable(builder, "Единицы измерения", true);
-                AddCellToTable(builder, data.FirstSetLabel, true);
-                AddCellToTable(builder, data.SecondSetLabel, true);
-                builder.EndRow();
+                // Заголовок
+                AddParagraph(body, "Отчет по надежности", true, 16);
 
-                // Заполнение строк
-                AddTableRow(builder, "Максимальный небаланс по активной мощности", "МВт", data.FirstMaxActivePowerImbalance, data.SecondMaxActivePowerImbalance);
-                AddTableRow(builder, "Максимальный небаланс по реактивной мощности", "МВАр", data.FirstMaxReactivePowerImbalance, data.SecondMaxReactivePowerImbalance);
-                AddTableRow(builder, "Усредненный суммарный небаланс по активной мощности", "МВт", data.FirstAverageTotalActivePowerImbalance, data.SecondAverageTotalActivePowerImbalance);
-                AddTableRow(builder, "Усредненный суммарный небаланс по реактивной мощности", "МВАр", data.FirstAverageTotalReactivePowerImbalance, data.SecondAverageTotalReactivePowerImbalance);
-                AddTableRow(builder, "Среднее математическое ожидание отклонения измеренного от оцененного", "(о.е.)", data.FirstAverageDeviation, data.SecondAverageDeviation);
-                AddTableRow(builder, "Среднеквадратичное отклонение измеренных значений", "(о.е.)", data.FirstStandardDeviation, data.SecondStandardDeviation);
-                AddTableRow(builder, "Успешность ОС", "%", data.FirstSuccessRate, data.SecondSuccessRate);
+                foreach (var data in _reportDataList)
+                {
+                    // Подзаголовок
+                    AddParagraph(body, $"Расчетный интервал: от {data.StartDateTime} до {data.EndDateTime}", true, 12);
 
-                builder.EndTable();
-                builder.Writeln();
+                    // Таблица
+                    Table table = new Table();
+                    table.AppendChild(CreateTableProperties());
+
+                    // Заголовки таблицы
+                    TableRow headerRow = new TableRow();
+                    headerRow.Append(CreateTableCell("Показатель", true));
+                    headerRow.Append(CreateTableCell("Единицы измерения", true));
+                    headerRow.Append(CreateTableCell(data.FirstSetLabel, true));
+                    headerRow.Append(CreateTableCell(data.SecondSetLabel, true));
+                    table.Append(headerRow);
+
+                    // Добавление строк с данными
+                    table.Append(CreateDataRow("Максимальный небаланс по активной мощности", "МВт", data.FirstMaxActivePowerImbalance, data.SecondMaxActivePowerImbalance));
+                    table.Append(CreateDataRow("Максимальный небаланс по реактивной мощности", "МВАр", data.FirstMaxReactivePowerImbalance, data.SecondMaxReactivePowerImbalance));
+                    table.Append(CreateDataRow("Усредненный суммарный небаланс по активной мощности", "МВт", data.FirstAverageTotalActivePowerImbalance, data.SecondAverageTotalActivePowerImbalance));
+                    table.Append(CreateDataRow("Усредненный суммарный небаланс по реактивной мощности", "МВАр", data.FirstAverageTotalReactivePowerImbalance, data.SecondAverageTotalReactivePowerImbalance));
+                    table.Append(CreateDataRow("Среднее математическое ожидание отклонения измеренного от оцененного", "(о.е.)", data.FirstAverageDeviation, data.SecondAverageDeviation));
+                    table.Append(CreateDataRow("Среднеквадратичное отклонение измеренных значений", "(о.е.)", data.FirstStandardDeviation, data.SecondStandardDeviation));
+                    table.Append(CreateDataRow("Успешность ОС", "%", data.FirstSuccessRate, data.SecondSuccessRate));
+
+                    body.Append(table);
+                }
+
+                mainPart.Document.Save();
             }
-
-            document.Save(filePath);
 
             await Task.CompletedTask;
         }
 
-        private void AddCellToTable(DocumentBuilder builder, string text, bool isHeader)
+        private void AddParagraph(Body body, string text, bool bold, int fontSize)
         {
-            if (isHeader)
-            {
-                builder.Font.Bold = true;
-            }
+            Paragraph paragraph = new Paragraph();
+            Run run = new Run();
+            RunProperties runProperties = new RunProperties();
 
-            builder.InsertCell();
-            builder.Write(text);
-            builder.Font.Bold = false;
+            if (bold)
+                runProperties.Append(new Bold());
+            runProperties.Append(new FontSize { Val = (fontSize * 2).ToString() });
+
+            run.Append(runProperties);
+            run.Append(new Text(text));
+            paragraph.Append(run);
+            body.Append(paragraph);
         }
 
-        private void AddTableRow(DocumentBuilder builder, string indicator, string unit, double firstValue, double secondValue)
+        private TableCell CreateTableCell(string text, bool bold)
         {
-            AddCellToTable(builder, indicator, false);
-            AddCellToTable(builder, unit, false);
-            AddCellToTable(builder, firstValue.ToString("F3"), false);
-            AddCellToTable(builder, secondValue.ToString("F3"), false);
-            builder.EndRow();
+            TableCell cell = new TableCell();
+            Paragraph paragraph = new Paragraph();
+            Run run = new Run();
+            if (bold)
+                run.Append(new RunProperties(new Bold()));
+
+            run.Append(new Text(text));
+            paragraph.Append(run);
+            cell.Append(paragraph);
+            return cell;
+        }
+
+        private TableRow CreateDataRow(string indicator, string unit, double firstValue, double secondValue)
+        {
+            TableRow row = new TableRow();
+            row.Append(CreateTableCell(indicator, false));
+            row.Append(CreateTableCell(unit, false));
+            row.Append(CreateTableCell(firstValue.ToString("F3"), false));
+            row.Append(CreateTableCell(secondValue.ToString("F3"), false));
+            return row;
+        }
+
+        private TableProperties CreateTableProperties()
+        {
+            return new TableProperties(
+                new TableBorders(
+                    new TopBorder { Val = BorderValues.Single, Size = 4 },
+                    new BottomBorder { Val = BorderValues.Single, Size = 4 },
+                    new LeftBorder { Val = BorderValues.Single, Size = 4 },
+                    new RightBorder { Val = BorderValues.Single, Size = 4 },
+                    new InsideHorizontalBorder { Val = BorderValues.Single, Size = 4 },
+                    new InsideVerticalBorder { Val = BorderValues.Single, Size = 4 }));
         }
     }
 }
