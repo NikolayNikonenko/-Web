@@ -8,5 +8,6 @@
         public string ActionName { get; set; }      // Название выбранного действия
         public DateTime StartDate { get; set; }     // Дата начала временного интервала
         public DateTime EndDate { get; set; }       // Дата окончания временного интервала
+        public string? CalculationFormula { get; set; } // Формула для "Создать дорасчет"
     }
 }

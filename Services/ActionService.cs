@@ -513,15 +513,140 @@ namespace перенос_бд_на_Web.Services
             Console.WriteLine("Создание дорасчета для ТМ");
             bool hasChanges = false;
 
+            ITable tableTIChannel = (ITable)_rastr.Tables.Item("ti");
+            ICol izmZnach = (ICol)tableTIChannel.Cols.Item("ti_val");
+
             foreach (var action in actions)
             {
-                Console.WriteLine($"Создан дорасчет для ТМ {action.TelemetryId}");
-                hasChanges = true; // Фиксируем изменение для вызова SaveSlice
+                if (string.IsNullOrWhiteSpace(action.CalculationFormula))
+                {
+                    Console.WriteLine($"Пропуск действия: нет формулы для ТМ {action.TelemetryId}");
+                    continue;
+                }
+                // Разбор формулы
+                var formulaElements = ParseFormula(action.CalculationFormula);
+
+                // Получение значений для каждого UID
+                Dictionary<string, double> uidValues = new();
+
+                foreach (var uid in formulaElements.UIDs)
+                {
+                    var uniqueCombinations = GetUniqueIndexTmId1(uid);
+                    foreach (var combination in uniqueCombinations)
+                    {
+                        tableTIChannel.SetSel($"Num={combination.IndexTm} AND Id1={combination.Id1}");
+                        int n = tableTIChannel.FindNextSel[-1];
+                        if (n >= 0)
+                        {
+                            double value = (double)izmZnach.get_ZN(n);
+                            uidValues[uid] = value;
+                        }
+                    }
+                }
+
+                // Вычисление результата
+                double result = CalculateFormula(uidValues, formulaElements.Operators);
+
+                // Установка значения
+                tableTIChannel.SetSel($"Num={action.TelemetryId} AND Id1={action.Id1}");
+                int actionRow = tableTIChannel.FindNextSel[-1];
+                if (actionRow >= 0)
+                {
+                    izmZnach.set_ZN(actionRow, result);
+                    hasChanges = true;
+                    Console.WriteLine($"Дорасчет выполнен для ТМ {action.TelemetryId}, значение: {result}");
+                }
             }
 
             return hasChanges;
         }
 
+        private (List<string> UIDs, List<string> Operators) ParseFormula(string formula)
+        {
+            // Регулярное выражение для UID
+            var uidRegex = new Regex(@"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b");
+
+            // Регулярное выражение для операторов, включая начальный оператор перед первым UID
+            var operatorRegex = new Regex(@"[+\-*/](?=\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
+
+            // Проверяем наличие начального оператора
+            string initialOperator = formula.StartsWith("-") || formula.StartsWith("+") ? formula[0].ToString() : null;
+
+            // Находим все UID в формуле
+            var uids = uidRegex.Matches(formula).Select(m => m.Value).ToList();
+
+            // Находим операторы
+            var operators = operatorRegex.Matches(formula).Select(m => m.Value).ToList();
+
+            // Проверяем, нужно ли добавлять начальный оператор
+            if (initialOperator != null && (operators.Count == 0 || operators[0] != initialOperator))
+            {
+                operators.Insert(0, initialOperator); // Вставляем начальный оператор в начало
+            }
+
+            return (uids, operators);
+        }
+
+        private List<(int IndexTm, int Id1)> GetUniqueIndexTmId1(string uid)
+        {
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationContext>();
+
+                // Преобразование UID в Guid
+                Guid parsedUid = Guid.Parse(uid);
+
+                // Извлечение уникальных сочетаний IndexTm и Id1
+                var indexTmId1Pairs = context.tm
+                    .Where(tm => tm.ID == parsedUid) // Фильтрация по UID
+                    .Select(tm => new { IndexTm = (int)tm.IndexTm, tm.Id1 }) // Приведение IndexTm к int
+                    .Distinct() // Уникальные записи
+                    .ToList() // Материализация запроса
+                    .Select(x => (x.IndexTm, x.Id1)) // Преобразование в кортеж
+                    .ToList(); // Материализация списка
+
+                return indexTmId1Pairs;
+            }
+        }
+        private double CalculateFormula(Dictionary<string, double> uidValues, List<string> operators)
+        {
+            var uids = uidValues.Keys.ToList();
+            if (uids.Count == 0) return 0;
+
+            double result = uidValues[uids[0]];
+
+            // Если перед первым значением есть оператор, применяем его
+            if (operators.Count > 0 && (operators[0] == "+" || operators[0] == "-"))
+            {
+                result = operators[0] switch
+                {
+                    "+" => result,
+                    "-" => -result,
+                    _ => throw new InvalidOperationException($"Неизвестная операция: {operators[0]}")
+                };
+
+                // Удаляем использованный оператор
+                operators.RemoveAt(0);
+            }
+
+            // Обработка оставшихся значений
+            for (int i = 1; i < uids.Count; i++)
+            {
+                double value = uidValues[uids[i]];
+                string op = operators[i - 1]; // Оператор для текущей итерации
+
+                result = op switch
+                {
+                    "+" => result + value,
+                    "-" => result - value,
+                    "*" => result * value,
+                    "/" => value != 0 ? result / value : throw new DivideByZeroException("Деление на ноль"),
+                    _ => throw new InvalidOperationException($"Неизвестная операция: {op}")
+                };
+            }
+
+            return result;
+        }
 
         private async Task<bool> ExcludeFromOS(List<VerificationAction> actions)
         {
