@@ -26,6 +26,11 @@
     private int progress = 0; // Прогресс выполнения (в процентах)
     private string statusMessage = "Ожидание начала операции..."; // Сообщение о текущем статусе
 
+    private DateTime? startDate;
+    private DateTime? endDate;
+
+    private bool showIntervalInput = false;
+
 
     protected override async Task OnInitializedAsync()
     {
@@ -45,6 +50,12 @@
         {
             Console.WriteLine($"Ошибка при загрузке данных: {ex.Message}");
         }
+    }
+
+    private void ToggleIntervalInput()
+    {
+        // Переключение отображения полей ввода интервала
+        showIntervalInput = !showIntervalInput;
     }
 
     private async Task IdentifyErrors()
@@ -198,7 +209,21 @@
     <InputFile OnChange="OnInputFileChange" MaxAllowedSize="10485760" /> <!-- 10 MB -->
 </div>
 
-<button @onclick="IdentifyErrors" class="btn btn-danger mb-3">Выявить ошибки</button>
+<div class="mb-3">
+    <button @onclick="IdentifyErrors" class="btn btn-danger mb-3">Выявить ошибки</button>
+    <button class="btn btn-secondary mb-3" @onclick="ToggleIntervalInput">Задать интервал для устранения ошибок</button>
+</div>
+
+@if (showIntervalInput)
+{
+    <div class="mb-3">
+        <label>Начало временного промежутка:</label>
+        <input type="datetime-local" @bind="startDate" class="form-control" />
+        <label>Конец временного промежутка:</label>
+        <input type="datetime-local" @bind="endDate" class="form-control" />
+        @* <button class="btn btn-success mt-2" @onclick="ApplyErrorInterval">Применить интервал</button> *@
+    </div>
+}
 
 @if (isProcessing)
 {

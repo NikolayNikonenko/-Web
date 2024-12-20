@@ -84,7 +84,15 @@
 
     private List<string> formulas = new(); // Лист для сохранения формул
 
-   
+    private bool isThinningEnabled { get; set; } = false;
+
+    private bool isDropdownVisible = false;
+
+    private string originalDataSet;
+
+    private List<string> experimentLabels;
+
+
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
@@ -115,6 +123,10 @@
 
             // Показываем выпадающий список только если есть эксперименты
             IsDropdownVisible = availableExperiments.Any();
+
+            // Загружаем уникальные значения experiment_label
+            experimentLabels = await GetUniqueExperimentLabels();
+
         }
         catch (Exception ex)
         {
@@ -149,13 +161,24 @@
 
     private void SearchData()
     {
+        // Проверяем и заменяем значение selectedExperiment, если оно пустое или null
+        if (string.IsNullOrEmpty(selectedExperiment))
+        {
+            selectedExperiment = "Входные данные";
+        }
+
         if (string.IsNullOrEmpty(searchTerm))
         {
-            filteredTm = tm;
+            // Фильтруем по selectedExperiment
+            filteredTm = tm.Where(t => t.experiment_label == selectedExperiment).ToList();
         }
         else
         {
-            filteredTm = tm.Where(t => t.IndexTm.ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+            // Фильтруем по searchTerm и selectedExperiment
+            filteredTm = tm
+                .Where(t => t.experiment_label == selectedExperiment &&
+                            t.IndexTm.ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
         SortData(currentSortColumn);
     }
@@ -389,15 +412,15 @@
             _ => string.Empty
         };
     }
-    private async Task ApplyTimeIntervalFilter(bool isThinning = false)
+    private async Task ApplyTimeIntervalFilter()
     {
         if (startDate.HasValue && endDate.HasValue)
         {
-            await FilterByTimeInterval(isThinning);
+            await FilterByTimeInterval(isThinningEnabled);
         }
         else
         {
-            await RetrieveAllData(isThinning);
+            await RetrieveAllData(isThinningEnabled);
         }
     }
 
@@ -442,7 +465,20 @@
 
     private async Task RetrieveAllData(bool isThinning)
     {
-        filteredTMValues = await _context.TMValues.ToListAsync();
+        filteredTMValues = await _context.TMValues.
+        AsNoTracking()
+        .Where(t => t.experiment_label == originalDataSet)
+        .Select(t => new TMValues
+            {
+                ID = t.ID,
+                IndexTM = t.IndexTM,
+                IzmerValue = t.IzmerValue,
+                OcenValue = t.OcenValue,
+                Id1 = t.Id1,
+                NameTM = t.NameTM,
+                Lagranj = t.Lagranj
+            })
+        .ToListAsync();
         UpdateChartSourceData(filteredTMValues);
 
         if (!filteredTMValues.Any())
@@ -599,7 +635,28 @@
         isTrackingOptionsVisible = true;
     }
 
+    private void ToggleDropdown()
+    {
+        isDropdownVisible = !isDropdownVisible;
+    }
 
+    private void SelectOriginalDataSet(string dataSet)
+    {
+        originalDataSet = dataSet;
+        isDropdownVisible = false; // Закрыть выпадающий список после выбора
+        Console.WriteLine($"Выбран набор данных: {originalDataSet}");
+    }
+
+
+    public async Task<List<string>> GetUniqueExperimentLabels()
+    {
+        var labels = await _context.TMValues
+            .Where(tm => !tm.experiment_label.StartsWith("Эксперимент"))
+            .Select(tm => tm.experiment_label)
+            .Distinct()
+            .ToListAsync();
+        return labels;
+    }
 
 }
 
@@ -611,7 +668,12 @@
         <label>Конец временного промежутка:</label>
         <input type="datetime-local" @bind="endDate" class="form-control" />
 
-        @if (showThinningInput)
+        <div class="form-check mb-3">
+            <input type="checkbox" id="enableThinning" class="form-check-input" @bind="isThinningEnabled" />
+            <label class="form-check-label" for="enableThinning">Прореживать данные</label>
+        </div>
+
+        @if (isThinningEnabled)
         {
             <div class="mb-3">
                 <label>Интервал прореживания:</label>
@@ -619,9 +681,27 @@
             </div>
         }
 
+        <div class="mb-3">
+            <button class="btn btn-secondary dropdown-toggle" @onclick="ToggleDropdown">
+                Выбрать исходный набор данных
+            </button>
+            @if (isDropdownVisible)
+            {
+                <div class="dropdown-menu show">
+                    @foreach (var label in experimentLabels)
+                    {
+                        <button class="dropdown-item" @onclick="() => SelectOriginalDataSet(label)">
+                            @label
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
         <div class="mt-2">
-            <button @onclick="() => ApplyTimeIntervalFilter(false)" class="btn btn-primary me-2">Применить заданный интервал</button>
-            <button @onclick="() => ApplyTimeIntervalFilter(true)" class="btn btn-secondary">Прореживать данные</button>
+            <button @onclick="ApplyTimeIntervalFilter" class="btn btn-primary">
+                Применить заданный интервал
+            </button>
         </div>
     </div>
 }
@@ -630,10 +710,6 @@
 
 <button @onclick="() => showTimeIntervalInput = !showTimeIntervalInput" class="btn btn-primary mt-2">
     @(showTimeIntervalInput ? "Скрыть выбор времени" : "Показать выбор времени")
-</button>
-
-<button @onclick="() => showThinningInput = !showThinningInput" class="btn btn-primary mt-2">
-    @(showThinningInput ? "Скрыть интервал прореживания" : "Задать интервал прореживания")
 </button>
 
 
@@ -698,6 +774,7 @@
                 tmValues,                // Передаем значения ТМ для расчета
                 UpdateProgress,          // Метод для обновления прогресса
                 SetStatusBarVisible,     // Метод для управления видимостью статусбара
+                originalDataSet,
                 startDate,               // Начальная дата
                 endDate,                 // Конечная дата
                 false,

@@ -18,6 +18,15 @@
       <Isolated>false</Isolated>
       <EmbedInteropTypes>true</EmbedInteropTypes>
     </COMReference>
+    <COMReference Include="ASTRALib">
+      <WrapperTool>tlbimp</WrapperTool>
+      <VersionMinor>0</VersionMinor>
+      <VersionMajor>1</VersionMajor>
+      <Guid>84b05080-abc9-11d3-b740-00500454cf3f</Guid>
+      <Lcid>0</Lcid>
+      <Isolated>false</Isolated>
+      <EmbedInteropTypes>true</EmbedInteropTypes>
+    </COMReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -27,12 +36,6 @@
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="6.0.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="6.0.0" />
     <PackageReference Include="Xceed.Words.NET" Version="3.0.24152.1219" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="ASTRALib">
-      <HintPath>..\..\..\..\..\Program Files (x86)\RastrWin3\ASTRALib.dll</HintPath>
-    </Reference>
   </ItemGroup>
 
 </Project>

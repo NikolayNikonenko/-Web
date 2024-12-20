@@ -20,12 +20,12 @@ public class CorrData
         List<TMValues> filteredTMValues,
         Action<int> progressCallback,
         Action<bool> setStatusBarVisible,
+        string originalDataSet,
         DateTime? startTime = null,
         DateTime? endTime = null,
         bool useThinning = false,
         int thinningStep = 1,
-        CancellationToken cancellationToken = default,
-        bool isVerified = false
+        CancellationToken cancellationToken = default
         )
     {
         setStatusBarVisible(true); // Отображаем статусбар один раз в начале
@@ -33,7 +33,11 @@ public class CorrData
 
         if ((filteredTMValues == null || !filteredTMValues.Any()) && (startTime.HasValue && endTime.HasValue))
         {
-            var allTMValues = await _correlation_Context.TMValues.AsNoTracking().ToListAsync();
+            var allTMValues = await _correlation_Context.TMValues
+                .AsNoTracking()
+                .Where(t => t.experiment_label == originalDataSet)
+                .ToListAsync();
+
             filteredTMValues = allTMValues
                 .Where(t => DateTime.TryParseExact(t.NumberOfSrez, "HH_mm_ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime numberOfSrezTime) &&
                             numberOfSrezTime >= startTime.Value && numberOfSrezTime <= endTime.Value)
@@ -42,20 +46,20 @@ public class CorrData
         else if (filteredTMValues == null || !filteredTMValues.Any())
         {
             filteredTMValues = await _correlation_Context.TMValues
-        .AsNoTracking()
-        .Select(t => new TMValues
-        {
-            ID = t.ID,
-            IndexTM = t.IndexTM,
-            IzmerValue = t.IzmerValue,
-            OcenValue = t.OcenValue,
-            Id1 = t.Id1,
-            NameTM = t.NameTM,
-            Lagranj = t.Lagranj
+                .AsNoTracking()
+                .Where(t => t.experiment_label == originalDataSet)
+                .Select(t => new TMValues
+                {
+                    ID = t.ID,
+                    IndexTM = t.IndexTM,
+                    IzmerValue = t.IzmerValue,
+                    OcenValue = t.OcenValue,
+                    Id1 = t.Id1,
+                    NameTM = t.NameTM,
+                    Lagranj = t.Lagranj
 
-            // Добавьте другие необходимые поля, если нужно
-        })
-        .ToListAsync(cancellationToken);
+                })
+                .ToListAsync(cancellationToken);
         }
 
         if (!filteredTMValues.Any())
