@@ -92,10 +92,14 @@
 
     private List<string> experimentLabels;
 
+    private bool isLoading = true; // Флаг для отображения индикатора загрузки
+
 
     protected override async Task OnInitializedAsync()
     {
+        isLoading = true; // Устанавливаем флаг в true перед началом загрузки
         await LoadData();
+        isLoading = false; // Снимаем флаг после завершения загрузки
     }
 
 
@@ -1229,10 +1233,19 @@
 }
 
 
-
-@if (filteredTm == null || !filteredTm.Any())
+@if (isLoading)
 {
-    <p>Нет данных для отображения.</p>
+    <div class="loading-indicator">
+        <p>Получение данных из БД...</p>
+        <div class="spinner-border text-primary" role="status">
+            <span class="sr-only"></span>
+        </div>
+    </div>
+}
+
+else if (filteredTm == null || !filteredTm.Any())
+{
+    <p style="margin-top: 20px;">Нет данных для отображения.</p>
 }
 else
 {
@@ -1340,6 +1353,7 @@ else
         </table>
     </div>
 }
+
 
 
 
