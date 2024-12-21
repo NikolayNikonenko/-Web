@@ -88,7 +88,7 @@
 
     private bool isDropdownVisible = false;
 
-    private string originalDataSet;
+    private string originalDataSet = "Входные данные";
 
     private List<string> experimentLabels;
 
@@ -412,85 +412,88 @@
             _ => string.Empty
         };
     }
-    private async Task ApplyTimeIntervalFilter()
+    private async Task ApplyTimeIntervalFilter(int pruningInterval)
     {
+        await LoadTMValues(isThinningEnabled, pruningInterval);
+    }
+
+    private async Task LoadTMValues(bool isThinningEnabled, int pruningInterval)
+    {
+        if (pruningInterval <= 0)
+        {
+            Console.WriteLine("pruningInterval должен быть больше 0.");
+            pruningInterval = 1; // Устанавливаем значение по умолчанию
+        }
+
+        List<string> filePaths = null;
+        List<Guid> sliceIdsInRange = null;
+
         if (startDate.HasValue && endDate.HasValue)
         {
-            await FilterByTimeInterval(isThinningEnabled);
-        }
-        else
-        {
-            await RetrieveAllData(isThinningEnabled);
-        }
-    }
-
-    private async Task FilterByTimeInterval(bool isThinning)
-    {
-        var filePaths = await sliceService.GetFilePathsInRangeAsync(startDate.Value, endDate.Value, experimentalKit);
-
-        if (!filePaths.Any())
-        {
-            Console.WriteLine("Нет найденных путей файлов для заданного временного интервала.");
-            return;
-        }
-
-        var sliceIdsInRange = await _context.slices
-            .Where(s => filePaths.Contains(s.SlicePath))
-            .Select(s => s.SliceID)
-            .ToListAsync();
-
-        if (!sliceIdsInRange.Any())
-        {
-            Console.WriteLine("Нет идентификаторов срезов для заданных путей файлов.");
-            return;
-        }
-
-        filteredTMValues = await _context.TMValues
-            .Where(t => sliceIdsInRange.Contains(t.SliceID))
-            .ToListAsync();
-
-        if (!filteredTMValues.Any())
-        {
-            Console.WriteLine("filteredTMValues пуст после фильтрации.");
-            return;
-        }
-
-        UpdateChartSourceData(filteredTMValues);
-
-        if (isThinning)
-        {
-            ApplyThinning();
-        }
-    }
-
-    private async Task RetrieveAllData(bool isThinning)
-    {
-        filteredTMValues = await _context.TMValues.
-        AsNoTracking()
-        .Where(t => t.experiment_label == originalDataSet)
-        .Select(t => new TMValues
+            // Получаем пути файлов для заданного временного интервала
+            filePaths = await sliceService.GetFilePathsInRangeAsync(startDate.Value, endDate.Value, originalDataSet);
+            if (!filePaths.Any())
             {
-                ID = t.ID,
-                IndexTM = t.IndexTM,
-                IzmerValue = t.IzmerValue,
-                OcenValue = t.OcenValue,
-                Id1 = t.Id1,
-                NameTM = t.NameTM,
-                Lagranj = t.Lagranj
-            })
-        .ToListAsync();
-        UpdateChartSourceData(filteredTMValues);
+                Console.WriteLine("Нет найденных путей файлов для заданного временного интервала.");
+                return;
+            }
 
-        if (!filteredTMValues.Any())
+            // Получаем идентификаторы срезов
+            sliceIdsInRange = await _context.slices
+                .Where(s => filePaths.Contains(s.SlicePath))
+                .Select(s => s.SliceID)
+                .ToListAsync();
+
+            if (!sliceIdsInRange.Any())
+            {
+                Console.WriteLine("Нет идентификаторов срезов для заданных путей файлов.");
+                return;
+            }
+        }
+
+        // Загружаем только нужные записи TMValues с определенными полями
+        var allTMValuesQuery = _context.TMValues
+            .AsNoTracking()
+            .Where(t => !startDate.HasValue || sliceIdsInRange.Contains(t.SliceID)) // Фильтруем по срезам, если задан интервал
+            .Select(t => new TMValues
+                {
+                    ID = t.ID,
+                    IndexTM = t.IndexTM,
+                    IzmerValue = t.IzmerValue,
+                    OcenValue = t.OcenValue,
+                    Id1 = t.Id1,
+                    NameTM = t.NameTM,
+                    Lagranj = t.Lagranj,
+                    NumberOfSrez = t.NumberOfSrez
+                });
+
+        var allTMValues = await allTMValuesQuery.ToListAsync();
+
+        if (!allTMValues.Any())
         {
-            Console.WriteLine("Нет данных в TMValues.");
+            Console.WriteLine("allTMValues пуст после фильтрации.");
             return;
         }
 
-        if (isThinning)
+        // Применяем прореживание, если включено
+         filteredTMValues = isThinningEnabled
+            ? allTMValues
+                .GroupBy(t => t.NumberOfSrez)
+                .Where((group, index) => index % pruningInterval == 0) // Применяем прореживание на уровне групп
+                .SelectMany(group => group) // Разворачиваем группы в записи
+                .ToList()
+            : allTMValues;
+
+        if (!filteredTMValues.Any())
         {
-            ApplyThinning();
+            Console.WriteLine("Нет данных в TMValues после фильтрации и прореживания.");
+            return;
         }
+
+        // Обновляем данные для графика
+        UpdateChartSourceData(filteredTMValues);
+
+        Console.WriteLine($"Загружено {filteredTMValues.Count} записей после применения прореживания.");
     }
 
     private void UpdateChartSourceData(List<TMValues> data)
@@ -499,21 +502,6 @@
         Console.WriteLine($"Найдено {data.Count} значений после фильтрации по времени.");
     }
 
-    private void ApplyThinning()
-    {
-        if (pruningInterval <= 0)
-        {
-            Console.WriteLine("thinningInterval должен быть больше 0.");
-            return;
-        }
-
-        filteredTMValues = filteredTMValues
-            .Where((t, index) => index % pruningInterval == 0)
-            .ToList();
-
-        UpdateChartSourceData(filteredTMValues);
-        Console.WriteLine($"Прореживание данных: осталось {filteredTMValues.Count} значений.");
-    }
 
     private void ToggleSelectedActions()
     {
@@ -699,7 +687,7 @@
         </div>
 
         <div class="mt-2">
-            <button @onclick="ApplyTimeIntervalFilter" class="btn btn-primary">
+            <button @onclick="() => ApplyTimeIntervalFilter(pruningInterval)" class="btn btn-primary">
                 Применить заданный интервал
             </button>
         </div>
@@ -777,8 +765,6 @@
                 originalDataSet,
                 startDate,               // Начальная дата
                 endDate,                 // Конечная дата
-                false,
-                1,
                 cancellationTokenSource.Token
             );
         }

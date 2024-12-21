@@ -23,8 +23,6 @@ public class CorrData
         string originalDataSet,
         DateTime? startTime = null,
         DateTime? endTime = null,
-        bool useThinning = false,
-        int thinningStep = 1,
         CancellationToken cancellationToken = default
         )
     {
@@ -89,13 +87,6 @@ public class CorrData
             var allIzmerTM = tmValuesForPair.Select(s => s.IzmerValue).ToList();
             var allOcenTM = tmValuesForPair.Select(s => s.OcenValue).ToList();
             var lagranjValues = tmValuesForPair.Select(s => s.Lagranj).ToList();
-
-            if (useThinning)
-            {
-                allIzmerTM = allIzmerTM.Where((value, index) => index % thinningStep == 0).ToList();
-                allOcenTM = allOcenTM.Where((value, index) => index % thinningStep == 0).ToList();
-                lagranjValues = lagranjValues.Where((value, index) => index % thinningStep == 0).ToList();
-            }
 
             if (!allIzmerTM.Any() || !allOcenTM.Any()) continue;
 
