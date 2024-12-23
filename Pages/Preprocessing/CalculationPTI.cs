@@ -404,7 +404,7 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
                 .Select(s => s.SliceName)
                 .FirstOrDefault();
 
-            string SaveFile = @"D:\учеба\магистратура\3 курс\диплом ит\мое\тесты файлов с предобработкой";
+            string SaveFile = @"C:\Users\User\Desktop\учеба\магистратура\5 семак\диплом по ИТ\тест подготовленные данные";
 
             // Фильтр
             COMCKLib.ITI m_TI = new COMCKLib.TI();

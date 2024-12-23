@@ -28,7 +28,7 @@ namespace перенос_бд_на_Web.Services
             _sliceService = sliceService;
             _scopeFactory = scopeFactory;
             _rastr = new Rastr(); // Инициализация IRastr
-            _fullSaveDirectory = "D:\\учеба\\магистратура\\3 курс\\диплом ит\\мое\\тесты сохранения файлов";
+            _fullSaveDirectory = "C:\\Users\\User\\Desktop\\учеба\\магистратура\\5 семак\\диплом по ИТ\\тест экспериментальные данные";
         }
 
         // Метод для выполнения действия
