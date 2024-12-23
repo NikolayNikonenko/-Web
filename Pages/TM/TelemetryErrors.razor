@@ -481,7 +481,7 @@
 
         // Применяем прореживание, если включено
          filteredTMValues = isThinningEnabled
-            ? allTMValues
+           ? allTMValuesQuery
                 .GroupBy(t => t.NumberOfSrez)
                 .Where((group, index) => index % pruningInterval == 0) // Применяем прореживание на уровне групп
                 .SelectMany(group => group) // Разворачиваем группы в записи
