@@ -93,11 +93,18 @@
     private List<string> experimentLabels;
 
     private bool isLoading = true; // Флаг для отображения индикатора загрузки
+    private string loadingMessage = ""; // Сообщение о процессе загрузки
 
+    private string UserMessage { get; set; }
+
+    private UserMessageModel CurrentUserMessage { get; set; }
+
+    private bool IsMessageHiding { get; set; } = false;
 
     protected override async Task OnInitializedAsync()
     {
         isLoading = true; // Устанавливаем флаг в true перед началом загрузки
+        loadingMessage = "Получение данных из БД...";
         await LoadData();
         isLoading = false; // Снимаем флаг после завершения загрузки
     }
@@ -423,82 +430,162 @@
 
     private async Task LoadTMValues(bool isThinningEnabled, int pruningInterval)
     {
+
+        isLoading = true;
+        loadingMessage = "Применение заданного интервала...";
+
         if (pruningInterval <= 0)
         {
-            Console.WriteLine("pruningInterval должен быть больше 0.");
+            await NotifyUserAsync("pruningInterval должен быть больше 0. Установлено значение по умолчанию.", "info");
             pruningInterval = 1; // Устанавливаем значение по умолчанию
         }
 
         List<string> filePaths = null;
         List<Guid> sliceIdsInRange = null;
 
-        if (startDate.HasValue && endDate.HasValue)
+        try
         {
-            // Получаем пути файлов для заданного временного интервала
-            filePaths = await sliceService.GetFilePathsInRangeAsync(startDate.Value, endDate.Value, originalDataSet);
-            if (!filePaths.Any())
+            // Получаем пути файлов и идентификаторы срезов
+            if (startDate.HasValue && endDate.HasValue)
             {
-                Console.WriteLine("Нет найденных путей файлов для заданного временного интервала.");
+                filePaths = await sliceService.GetFilePathsInRangeAsync(startDate.Value, endDate.Value, originalDataSet);
+                if (!filePaths.Any())
+                {
+                    await NotifyUserAsync("Нет найденных путей файлов для заданного временного интервала.", "error");
+                    return;
+                }
+
+                // Получение и сортировка идентификаторов срезов
+                sliceIdsInRange = await _context.slices
+                    .Where(s => filePaths.Contains(s.SlicePath) && s.experiment_label == originalDataSet)
+                    .OrderBy(s => s.SliceName)
+                    .Select(s => s.SliceID)
+                    .ToListAsync()
+                    .ConfigureAwait(false);
+
+                if (!sliceIdsInRange.Any())
+                {
+                    await NotifyUserAsync("Нет идентификаторов срезов для заданных путей файлов.", "error");
+                    return;
+                }
+            }
+            else
+            {
+                await NotifyUserAsync("Используется полный набор данных, так как временной интервал не задан.", "warning");
+
+                // Получение и сортировка идентификаторов срезов
+                sliceIdsInRange = await _context.slices
+                    .Where(s => s.experiment_label == originalDataSet)
+                    .OrderBy(s => s.SliceName)
+                    .Select(s => s.SliceID)
+                    .ToListAsync()
+                    .ConfigureAwait(false);
+
+                if (!sliceIdsInRange.Any())
+                {
+                    await NotifyUserAsync("Нет идентификаторов срезов для текущих условий.", "error");
+                    return;
+                }
+            }
+
+            if (pruningInterval > sliceIdsInRange.Count)
+            {
+                await NotifyUserAsync(
+                    "Заданный интервал прореживания превышает количество доступных срезов. Установите меньшее значение.",
+                    "error"
+                );
                 return;
             }
 
-            // Получаем идентификаторы срезов
-            sliceIdsInRange = await _context.slices
-                .Where(s => filePaths.Contains(s.SlicePath))
-                .Select(s => s.SliceID)
+            // Прореживание идентификаторов срезов, если включено прореживание
+            if (isThinningEnabled)
+            {
+                sliceIdsInRange = sliceIdsInRange
+                    .Where((id, index) => index % pruningInterval == 0)
+                    .ToList();
+            }
+
+            // Формирование запроса с фильтрацией
+            IQueryable<TMValues> filteredTMValuesQuery = _context.TMValues
+                .AsNoTracking()
+                .Where(t => sliceIdsInRange.Contains(t.SliceID));
+
+
+            // Выполнение запроса и обработка данных
+            filteredTMValues = await filteredTMValuesQuery
+                .Select(t => new TMValues
+                    {
+                        ID = t.ID,
+                        IndexTM = t.IndexTM,
+                        IzmerValue = t.IzmerValue,
+                        OcenValue = t.OcenValue,
+                        Id1 = t.Id1,
+                        NameTM = t.NameTM,
+                        Lagranj = t.Lagranj,
+                        NumberOfSrez = t.NumberOfSrez
+                    })
                 .ToListAsync();
 
-            if (!sliceIdsInRange.Any())
+            if (!filteredTMValues.Any())
             {
-                Console.WriteLine("Нет идентификаторов срезов для заданных путей файлов.");
+                await NotifyUserAsync("Нет данных в TMValues после фильтрации.", "error");
                 return;
             }
+
+            isLoading = false;
+
+            // Обновляем данные для графика
+            UpdateChartSourceData(filteredTMValues);
+
+            await NotifyUserAsync($"Загружено {filteredTMValues.Count} записей после применения фильтрации и прореживания.", "info");
         }
-
-        // Загружаем только нужные записи TMValues с определенными полями
-        var allTMValuesQuery = _context.TMValues
-            .AsNoTracking()
-            .Where(t => !startDate.HasValue || sliceIdsInRange.Contains(t.SliceID)) // Фильтруем по срезам, если задан интервал
-            .Select(t => new TMValues
-                {
-                    ID = t.ID,
-                    IndexTM = t.IndexTM,
-                    IzmerValue = t.IzmerValue,
-                    OcenValue = t.OcenValue,
-                    Id1 = t.Id1,
-                    NameTM = t.NameTM,
-                    Lagranj = t.Lagranj,
-                    NumberOfSrez = t.NumberOfSrez
-                });
-
-        var allTMValues = await allTMValuesQuery.ToListAsync();
-
-        if (!allTMValues.Any())
+        catch (OutOfMemoryException)
         {
-            Console.WriteLine("allTMValues пуст после фильтрации.");
+            await NotifyUserAsync("Заданный интервал слишком велик. Попробуйте задать меньший диапазон времени или увеличить шаг прореживания срезов.", "error");
             return;
         }
 
-        // Применяем прореживание, если включено
-         filteredTMValues = isThinningEnabled
-            ? allTMValues
-                .GroupBy(t => t.NumberOfSrez)
-                .Where((group, index) => index % pruningInterval == 0) // Применяем прореживание на уровне групп
-                .SelectMany(group => group) // Разворачиваем группы в записи
-                .ToList()
-            : allTMValues;
-
-        if (!filteredTMValues.Any())
-        {
-            Console.WriteLine("Нет данных в TMValues после фильтрации и прореживания.");
-            return;
-        }
-
-        // Обновляем данные для графика
-        UpdateChartSourceData(filteredTMValues);
-
-        Console.WriteLine($"Загружено {filteredTMValues.Count} записей после применения прореживания.");
     }
+
+    private async Task NotifyUserAsync(string message, string type = "info", int duration = 5000)
+    {
+        await InvokeAsync(() =>
+        {
+            CurrentUserMessage = new UserMessageModel
+                {
+                    Text = message,
+                    Type = type
+                };
+            StateHasChanged();
+        });
+
+        await Task.Delay(duration - 500); // Ждем заданное время, минус длительность анимации
+
+        await InvokeAsync(async () => await HideMessageAsync());
+    }
+
+
+    private string GetAlertClass(string type) => type switch
+    {
+        "error" => "alert alert-danger",  // Красный фон для ошибок
+        "warning" => "alert alert-warning", // Желтый фон для предупреждений
+        "info" => "alert alert-info",      // Синий фон для информационных сообщений
+        _ => "alert alert-secondary"       // Серый фон по умолчанию
+    };
+
+    private async Task HideMessageAsync()
+    {
+        IsMessageHiding = true; // Устанавливаем флаг для добавления класса .alert-hidden
+        await InvokeAsync(StateHasChanged); // Обновляем интерфейс в контексте диспетчера
+        await Task.Delay(500);  // Ждем завершения анимации (время из transition)
+        await InvokeAsync(() =>
+        {
+            CurrentUserMessage = null; // Убираем сообщение
+            IsMessageHiding = false;   // Сбрасываем флаг
+            StateHasChanged();         // Обновляем интерфейс
+        });
+    }
+
 
     private void UpdateChartSourceData(List<TMValues> data)
     {
@@ -1233,15 +1320,14 @@
 }
 
 
-@if (isLoading)
-{
-    <div class="loading-indicator">
-        <p>Получение данных из БД...</p>
-        <div class="spinner-border text-primary" role="status">
-            <span class="sr-only"></span>
+
+    @if (isLoading)
+    {
+        <div class="loading-indicator">
+            <div class="spinner-border"></div>
+            <p>@loadingMessage</p> <!-- Текст сообщения меняется динамически -->
         </div>
-    </div>
-}
+    }
 
 else if (filteredTm == null || !filteredTm.Any())
 {
@@ -1351,6 +1437,13 @@ else
                 }
             </tbody>
         </table>
+    </div>
+}
+
+@if (CurrentUserMessage != null)
+{
+    <div class="@GetAlertClass(CurrentUserMessage.Type) @(IsMessageHiding ? "alert-hidden" : "")">
+        @CurrentUserMessage.Text
     </div>
 }
 
