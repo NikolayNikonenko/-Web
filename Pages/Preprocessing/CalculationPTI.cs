@@ -404,7 +404,9 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
                 .Select(s => s.SliceName)
                 .FirstOrDefault();
 
-            string SaveFile = @"C:\Users\User\Desktop\учеба\магистратура\5 семак\диплом по ИТ\тест подготовленные данные";
+            string SaveFile = GetParameterValue("PreparedDataPath", context);
+
+            //string SaveFile = @"D:\учеба\магистратура\3 курс\диплом ит\мое\тесты файлов с предобработкой";
 
             // Фильтр
             COMCKLib.ITI m_TI = new COMCKLib.TI();
@@ -424,6 +426,21 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
 
             Rastr.Save(FullSaveFile, "");
         }
+
+        public string GetParameterValue(string parameterName, ApplicationContext context)
+        {
+            // Выполняем запрос к таблице configuration_parameters
+            var parameter = context.configuration_parameters
+                .FirstOrDefault(p => p.parameter_name == parameterName);
+
+            if (parameter == null)
+            {
+                throw new Exception($"Параметр с именем {parameterName} не найден в таблице configuration_parameters.");
+            }
+
+            return parameter.parameter_value;
+        }
+
 
         public void SavePTIData(ITable _tableTIChannel, ApplicationContext context, string FullSaveFile, string sliceName)
         {

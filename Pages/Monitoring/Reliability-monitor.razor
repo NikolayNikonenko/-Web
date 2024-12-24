@@ -88,7 +88,7 @@
         }
     }
 
-    private async Task ProcessReliabilityData()
+    private async Task ProcessReliabilityData(bool useNewLogic)
     {
         if (startDateTime == null || endDateTime == null)
         {
@@ -114,9 +114,7 @@
                 sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, firstSelectedSet),
                 sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, secondSelectedSet)
             };
-            // // Загрузка путей для наборов
-            // var filePathsFirstSet = await sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, firstSelectedSet);
-            // var filePathsSecondSet = await sliceService.GetFilePathsInRangeAsync(startDateTime.Value, endDateTime.Value, secondSelectedSet);
+
 
             var filePathsResults = await Task.WhenAll(filePathsTasks);
             var filePathsFirstSet = filePathsResults[0];
@@ -132,8 +130,8 @@
             // Параллельный анализ данных обоих наборов
             var analyzeTasks = new[]
             {
-                Task.Run(() => AnalyzeSetDataAsync(filePathsFirstSet,1)),
-                Task.Run(() => AnalyzeSetDataAsync(filePathsSecondSet,2))
+                Task.Run(() => AnalyzeSetDataAsync(filePathsFirstSet,1, useNewLogic)),
+                Task.Run(() => AnalyzeSetDataAsync(filePathsSecondSet,2, useNewLogic))
             };
 
             var analyzeResults = await Task.WhenAll(analyzeTasks);
@@ -203,16 +201,32 @@
         }
     }
 
-    private async Task<(int successfulCount, int totalCount)> AnalyzeSetDataAsync(List<string> filePaths, int setNumber)
+    private async Task<(int successfulCount, int totalCount)> AnalyzeSetDataAsync(List<string> filePaths, int setNumber, bool useNewLogic)
     {
-        var result = await ReliabilityAnalyzer.AnalyzeReliabilityData(
-        startDateTime.Value,
-        endDateTime.Value,
-        filePaths,
-        progress => UpdateProgress(setNumber, progress),
-        cancellationTokenSource.Token);
+        if (useNewLogic)
+        {
+            // Логика с использованием нового метода
+            var result = await ReliabilityAnalyzer.AnalyzeNewReliabilityData(
+                startDateTime.Value,
+                endDateTime.Value,
+                filePaths,
+                progress => UpdateProgress(setNumber, progress),
+                cancellationTokenSource.Token);
 
-        return (result.successfulCount, result.totalCount);
+            return (result.successfulCount, result.totalCount);
+        }
+        else
+        {
+            // Старая логика
+            var result = await ReliabilityAnalyzer.AnalyzeReliabilityData(
+                startDateTime.Value,
+                endDateTime.Value,
+                filePaths,
+                progress => UpdateProgress(setNumber, progress),
+                cancellationTokenSource.Token);
+
+            return (result.successfulCount, result.totalCount);
+        }
     }
 
     private async Task<double> CalculateAverageDeviationAsync(IEnumerable<string> slicePaths)
@@ -390,12 +404,19 @@
     <input id="endDateTime" type="datetime-local" @bind="endDateTime" class="form-control" style="width: 200px;" />
 </div>
 
-<!-- Кнопка -->
+
 <div class="mt-3">
-    <button class="btn btn-primary" @onclick="ProcessReliabilityData" disabled="@isProcessing">
+    <button class="btn btn-primary" @onclick="() => ProcessReliabilityData(false)" disabled="@isProcessing">
         Показатели надежности без ЕОТМ
     </button>
 </div>
+
+<div class="mt-3">
+    <button class="btn btn-primary" @onclick="() => ProcessReliabilityData(true)" disabled="@isProcessing">
+        Показатели надежности с ЕОТМ
+    </button>
+</div>
+
 
 @if (isProcessing)
 {

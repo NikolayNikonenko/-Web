@@ -12,11 +12,23 @@
     private string InputDataPath { get; set; }
     private string PreparedDataPath { get; set; }
     private string ExperimentalDataPath { get; set; }
-    private decimal IncorrectTMCorrelation { get; set; }
-    private decimal QuestionableTMCorrelation { get; set; }
-    private decimal ReliableTMCorrelation { get; set; }
+    private string IncorrectTMCorrelationRange { get; set; }
+    private string QuestionableTMCorrelationRange { get; set; }
+    private string ReliableTMCorrelationRange { get; set; }
 
     private List<string> validationErrors = new List<string>(); // Список для хранения ошибок
+
+    private bool saveSuccess = false; // Флаг успешного сохранения
+
+    private Dictionary<string, string> parameterLabels = new Dictionary<string, string>
+{
+    { "InputDataPath", "параметра: расположение для набора \"Входные данные\"" },
+    { "PreparedDataPath", "параметра: расположение для набора \"Подготовленные данные\"" },
+    { "ExperimentalDataPath", "параметра: расположение для набора \"Экспериментальные данные\"" },
+    { "IncorrectTMCorrelation", "параметра: Коэффициент корреляции некорректных ТМ" },
+    { "QuestionableTMCorrelation", "параметра: Коэффициент корреляции сомнительных ТМ" },
+    { "ReliableTMCorrelation", "параметра: Коэффициент корреляции достоверных ТМ" }
+};
 
     protected override async Task OnInitializedAsync()
     {
@@ -26,9 +38,34 @@
         InputDataPath = parameters.FirstOrDefault(p => p.parameter_name == "InputDataPath")?.parameter_value;
         PreparedDataPath = parameters.FirstOrDefault(p => p.parameter_name == "PreparedDataPath")?.parameter_value;
         ExperimentalDataPath = parameters.FirstOrDefault(p => p.parameter_name == "ExperimentalDataPath")?.parameter_value;
-        IncorrectTMCorrelation = decimal.Parse(parameters.FirstOrDefault(p => p.parameter_name == "IncorrectTMCorrelation")?.parameter_value ?? "0");
-        QuestionableTMCorrelation = decimal.Parse(parameters.FirstOrDefault(p => p.parameter_name == "QuestionableTMCorrelation")?.parameter_value ?? "0");
-        ReliableTMCorrelation = decimal.Parse(parameters.FirstOrDefault(p => p.parameter_name == "ReliableTMCorrelation")?.parameter_value ?? "0");
+
+        // Загрузка коэффициентов корреляции с диапазонами
+        var incorrectTMCorrelation = parameters.FirstOrDefault(p => p.parameter_name == "IncorrectTMCorrelation")?.parameter_value;
+        var questionableTMCorrelation = parameters.FirstOrDefault(p => p.parameter_name == "QuestionableTMCorrelation")?.parameter_value;
+        var reliableTMCorrelation = parameters.FirstOrDefault(p => p.parameter_name == "ReliableTMCorrelation")?.parameter_value;
+
+        // Преобразование строк с диапазонами в значения
+        IncorrectTMCorrelationRange = ParseCorrelationRange(incorrectTMCorrelation);
+        QuestionableTMCorrelationRange = ParseCorrelationRange(questionableTMCorrelation);
+        ReliableTMCorrelationRange = ParseCorrelationRange(reliableTMCorrelation);
+    }
+
+    // Метод для парсинга диапазона
+    private string ParseCorrelationRange(string correlationValue)
+    {
+        if (string.IsNullOrEmpty(correlationValue))
+        {
+            return ""; // Дефолтный диапазон, если значение пустое
+        }
+
+        // Проверяем, есть ли символ разделения
+        var parts = correlationValue.Split(';');
+        if (parts.Length == 2 && decimal.TryParse(parts[0], out _) && decimal.TryParse(parts[1], out _))
+        {
+            return correlationValue; // Если значение корректно, возвращаем как есть
+        }
+
+        return "-1;1"; // Возвращаем дефолтный диапазон, если формат некорректен
     }
 
     private async Task SaveConfiguration()
@@ -39,9 +76,9 @@
         ValidateParameter("InputDataPath", InputDataPath);
         ValidateParameter("PreparedDataPath", PreparedDataPath);
         ValidateParameter("ExperimentalDataPath", ExperimentalDataPath);
-        ValidateParameter("IncorrectTMCorrelation", IncorrectTMCorrelation.ToString());
-        ValidateParameter("QuestionableTMCorrelation", QuestionableTMCorrelation.ToString());
-        ValidateParameter("ReliableTMCorrelation", ReliableTMCorrelation.ToString());
+        ValidateParameter("IncorrectTMCorrelation", IncorrectTMCorrelationRange);
+        ValidateParameter("QuestionableTMCorrelation", QuestionableTMCorrelationRange);
+        ValidateParameter("ReliableTMCorrelation", ReliableTMCorrelationRange);
 
         // Если есть ошибки, не сохраняем данные
         if (validationErrors.Any())
@@ -53,11 +90,13 @@
         await UpdateOrCreateParameter("InputDataPath", InputDataPath);
         await UpdateOrCreateParameter("PreparedDataPath", PreparedDataPath);
         await UpdateOrCreateParameter("ExperimentalDataPath", ExperimentalDataPath);
-        await UpdateOrCreateParameter("IncorrectTMCorrelation", IncorrectTMCorrelation.ToString());
-        await UpdateOrCreateParameter("QuestionableTMCorrelation", QuestionableTMCorrelation.ToString());
-        await UpdateOrCreateParameter("ReliableTMCorrelation", ReliableTMCorrelation.ToString());
+        await UpdateOrCreateParameter("IncorrectTMCorrelation", IncorrectTMCorrelationRange);
+        await UpdateOrCreateParameter("QuestionableTMCorrelation", QuestionableTMCorrelationRange);
+        await UpdateOrCreateParameter("ReliableTMCorrelation", ReliableTMCorrelationRange);
 
         await _context.SaveChangesAsync();
+
+        saveSuccess = true; // Устанавливаем флаг успешного сохранения
     }
 
     private async Task UpdateOrCreateParameter(string parameterName, string parameterValue)
@@ -85,32 +124,54 @@
             // Проверка на null
             if (string.IsNullOrEmpty(parameterValue))
             {
-                validationErrors.Add($"Параметр {parameterName} не может быть пустым.");
+                validationErrors.Add($"{parameterLabels[parameterName]} не может быть пустым.");
                 return;
             }
 
             if (!Regex.IsMatch(parameterValue, @"^[a-zA-Z]:\\.*$"))
             {
-                validationErrors.Add($"Значение для пути {parameterName} должно быть в формате пути на диске.");
+                validationErrors.Add($"Значение для {parameterLabels[parameterName]} должно быть в формате пути на диске.");
             }
 
             if (!Directory.Exists(parameterValue))
             {
-                validationErrors.Add($"Путь {parameterValue} для параметра {parameterName} не существует.");
+                validationErrors.Add($"Путь: {parameterValue} для {parameterLabels[parameterName]} не существует.");
             }
         }
 
-        // Проверки числовых значений
+        // Проверки диапазонов для коэффициентов корреляции
         if (parameterName == "IncorrectTMCorrelation" || parameterName == "QuestionableTMCorrelation" || parameterName == "ReliableTMCorrelation")
         {
-            if (!decimal.TryParse(parameterValue, out var value) || value < -1 || value > 1)
+            // Проверка, что значение является диапазоном
+            var rangeValues = parameterValue.Split(';');
+            if (rangeValues.Length != 2)
             {
-                validationErrors.Add($"Значение для {parameterName} должно быть числом в диапазоне от -1 до 1.");
+                validationErrors.Add($"Значение для {parameterLabels[parameterName]} должно быть в формате диапазона (например, -1;-0.5).");
+                return;
+            }
+
+            // Проверка числовых значений в диапазоне
+            if (!decimal.TryParse(rangeValues[0], out var minValue) || !decimal.TryParse(rangeValues[1], out var maxValue))
+            {
+                validationErrors.Add($"Значение для {parameterLabels[parameterName]} должно содержать два числа, разделённых точкой с запятой.");
+                return;
+            }
+
+            // Проверка на диапазон от -1 до 1
+            if (minValue < -1 || maxValue > 1)
+            {
+                validationErrors.Add($"Значение для {parameterLabels[parameterName]} должно быть в пределах от -1 до 1.");
+                return;
+            }
+
+            // Проверка, что минимальное значение меньше максимального
+            if (minValue > maxValue)
+            {
+                validationErrors.Add($"Минимальное значение для {parameterLabels[parameterName]} не может быть больше максимального.");
+                return;
             }
         }
     }
-
-
 }
 
 <!-- Отображение ошибок -->
@@ -126,31 +187,38 @@
     </div>
 }
 
-<div>
-    <label>Путь для "Входные данные":</label>
-    <input @bind="InputDataPath" class="form-control" />
+<div class="mb-3">
+    <label>Расположение для набора "Входные данные":</label>
+    <input @bind="InputDataPath" class="form-control" placeholder="C:\path\to\input\data" />
 </div>
-<div>
-    <label>Путь для "Подготовленные данные":</label>
-    <input @bind="PreparedDataPath" class="form-control" />
+<div class="mb-3">
+    <label>Расположение для набора "Подготовленные данные":</label>
+    <input @bind="PreparedDataPath" class="form-control" placeholder="C:\path\to\prepared\data" />
 </div>
-<div>
-    <label>Путь для "Экспериментальные данные":</label>
-    <input @bind="ExperimentalDataPath" class="form-control" />
+<div class="mb-3">
+    <label>Расположение для набора "Экспериментальные данные":</label>
+    <input @bind="ExperimentalDataPath" class="form-control" placeholder="C:\path\to\experimental\data" />
 </div>
-<div>
-    <label>Коэффициент корреляции некорректных ТМ:</label>
-    <input type="number" step="0.01" @bind="IncorrectTMCorrelation" class="form-control" />
+<div class="mb-3">
+    <label>Коэффициент корреляции некорректных ТМ (диапазон, например -1;-0.5):</label>
+    <input @bind="IncorrectTMCorrelationRange" class="form-control" placeholder="-1;-0.5" />
 </div>
-<div>
-    <label>Коэффициент корреляции сомнительных ТМ:</label>
-    <input type="number" step="0.01" @bind="QuestionableTMCorrelation" class="form-control" />
+<div class="mb-3">
+    <label>Коэффициент корреляции сомнительных ТМ (диапазон, например -0,5;0.5):</label>
+    <input @bind="QuestionableTMCorrelationRange" class="form-control" placeholder="-0.5;0.5" />
 </div>
-<div>
-    <label>Коэффициент корреляции достоверных ТМ:</label>
-    <input type="number" step="0.01" @bind="ReliableTMCorrelation" class="form-control" />
+<div class="mb-3">
+    <label>Коэффициент корреляции достоверных ТМ (диапазон, например 0,5;1):</label>
+    <input @bind="ReliableTMCorrelationRange" class="form-control" placeholder="0.5;1" />
 </div>
 
 <button class="btn btn-primary" @onclick="SaveConfiguration">Сохранить</button>
+
+@if (saveSuccess)
+{
+    <div class="alert alert-success">
+        Конфигурация успешно сохранена.
+    </div>
+}
 
 

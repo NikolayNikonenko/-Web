@@ -28,8 +28,30 @@ namespace перенос_бд_на_Web.Services
             _sliceService = sliceService;
             _scopeFactory = scopeFactory;
             _rastr = new Rastr(); // Инициализация IRastr
-            _fullSaveDirectory = "C:\\Users\\User\\Desktop\\учеба\\магистратура\\5 семак\\диплом по ИТ\\тест экспериментальные данные";
+            _fullSaveDirectory = GetParameterValue("ExperimentalDataPath");
+            //_fullSaveDirectory = "D:\\учеба\\магистратура\\3 курс\\диплом ит\\мое\\тесты сохранения файлов";
         }
+
+        public string GetParameterValue(string parameterName)
+        {
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                // Получаем контекст базы данных
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationContext>();
+
+                // Выполняем запрос к таблице configuration_parameters
+                var parameter = context.configuration_parameters
+                    .FirstOrDefault(p => p.parameter_name == parameterName);
+
+                if (parameter == null)
+                {
+                    throw new Exception($"Параметр с именем {parameterName} не найден в таблице configuration_parameters.");
+                }
+
+                return parameter.parameter_value;
+            }
+        }
+
 
         // Метод для выполнения действия
         public async Task ExecuteAction(
