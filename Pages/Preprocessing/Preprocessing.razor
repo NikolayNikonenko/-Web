@@ -37,8 +37,9 @@
 
     private CalculationIntervalForPTI lastInterval;
 
-
     private List<TMValues> filteredData;
+
+    private bool isIntervalApplied = false; // Переменная состояния
 
     protected override async Task OnInitializedAsync()
     {
@@ -85,7 +86,10 @@
             await CalculationIntervalService.SaveCalculationInterval(startDate.Value, endDate.Value);
             lastInterval = await CalculationIntervalService.GetLastCalculationInterval();
 
+            isIntervalApplied = true; // Интервал был применен, показываем вторую кнопку
+
             Console.WriteLine($"Интервал сохранён: {startDate:dd.MM.yyyy HH:mm:ss} - {endDate:dd.MM.yyyy HH:mm:ss}");
+            StateHasChanged(); // Обновляем интерфейс
         }
         else
         {
@@ -144,7 +148,7 @@
         showDateIntervalFields = !showDateIntervalFields; // Переключение видимости
     }
 
-    private async Task CalculateDTIForSelectedInterval()
+    private async Task CalculateDTIForSelectedInterval(DateTime? startDate)
     {
         if (filteredData == null || !filteredData.Any())
         {
@@ -171,7 +175,7 @@
             foreach (var path in slicePaths)
             {
                 CalculationDTI dtiCalculation = new CalculationDTI();
-                await Task.Run(() => dtiCalculation.CalculateDTIAndPTI(path, _context));
+                await Task.Run(() => dtiCalculation.CalculateDTIAndPTI(path, _context, startDate));
                 processedSlices++;
                 progress = (int)((processedSlices / (double)totalSlices) * 100);
                 StateHasChanged(); // Обновление UI
@@ -276,17 +280,20 @@
 
     <button class="btn btn-primary mt-2" @onclick="ApplyFilters">Применить заданный интервал</button>
 }
-
-<div>
-    <button class="btn btn-success mt-2" @onclick="CalculateDTIForSelectedInterval">
-        Рассчитать ПТИ и ДТИ для выбранного интервала
-    </button>
-</div>
+@if (isIntervalApplied)
+{
+    <div>
+        <button class="btn btn-primary mt-2"
+                @onclick="@(startDate.HasValue ? () => CalculateDTIForSelectedInterval(startDate.Value) : (Action)null)">
+            Рассчитать ПТИ и ДТИ для выбранного интервала
+        </button>
+    </div>
+}
 
 @if (showCorrelationButton)
 {
     <div>
-        <button class="btn btn-warning mt-3" @onclick="CalculateCorrelation">
+        <button class="btn btn-primary mt-2" @onclick="CalculateCorrelation">
             Рассчитать корреляцию для ДТИ и ПТИ
         </button>
     </div>
@@ -294,20 +301,21 @@
 
 @if (isStatusBarVisible)
 {
-    <div>
-        <p>Прогресс расчёта: @progress%</p>
-        <div class="progress">
-            <div class="progress-bar" role="progressbar" style="width: @progress%;"
-                 aria-valuenow="@progress" aria-valuemin="0" aria-valuemax="100">
-                @progress%
-            </div>
+    <div class="progress mt-3">
+        <div class="progress-bar progress-bar-striped progress-bar-animated"
+             role="progressbar"
+             style="width: @progress%"
+             aria-valuenow="@progress"
+             aria-valuemin="0"
+             aria-valuemax="100">
+            @progress%
         </div>
     </div>
 }
 
 @if (lastInterval != null && hasPreparedData)
 {
-    <p>
+    <p style="margin-top: 20px;">
         <b>ПТИ и ДТИ рассчитаны для интервала:</b>
         от: <span>@lastInterval.startDate.ToString("dd.MM.yy HH:mm:ss")</span>
         до: <span>@lastInterval.endDate.ToString("dd.MM.yy HH:mm:ss")</span>
@@ -356,9 +364,4 @@
         </tbody>
     </table>
 }
-@* <style>
-    table th, table td {
-        text-align: center;
-        vertical-align: middle;
-    }
-</style> *@
+

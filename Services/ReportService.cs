@@ -75,7 +75,7 @@ namespace перенос_бд_на_Web.Services
             if (_reportDataList.Count == 0)
                 throw new InvalidOperationException("Нет данных для сохранения отчета.");
 
-            string filePath = Path.Combine("C:\\Users\\User\\Desktop\\учеба\\магистратура\\5 семак\\диплом по ИТ\\тест отчеты",
+            string filePath = Path.Combine("D:\\учеба\\магистратура\\3 курс\\диплом ит\\мое\\тест отчеты",
                             $"Отчет_{DateTime.Now:yyyyMMdd_HHmmss}.docx");
 
             using (WordprocessingDocument wordDoc = WordprocessingDocument.Create(filePath, WordprocessingDocumentType.Document))

@@ -6,7 +6,7 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
 {
     public class CalculationDTI
     {
-        public void CalculateDTIAndPTI (string dirName, ApplicationContext context)
+        public void CalculateDTIAndPTI (string dirName, ApplicationContext context, DateTime? startDate)
         {
             string PathFile = ($"{dirName}");
             // Создаем указатель на экземпляр RastrWin и его запуск
@@ -217,7 +217,7 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
 
      
             CalculationPTI ptiCalculation = new CalculationPTI();
-            ptiCalculation.CalculatePTI(Rastr, PathFile, context);
+            ptiCalculation.CalculatePTI(Rastr, PathFile, context, startDate);
         }
             
         

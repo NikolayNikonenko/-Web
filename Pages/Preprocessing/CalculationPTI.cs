@@ -7,9 +7,9 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
 {
     public class CalculationPTI
     {
-        private string dateNow = DateTime.Now.ToString("yyyy_MM_dd");
+        //private string dateNow = DateTime.Now.ToString("yyyy_MM_dd");
 
-        public void CalculatePTI( IRastr Rastr, string dirName, ApplicationContext context)
+        public void CalculatePTI( IRastr Rastr, string dirName, ApplicationContext context, DateTime? startDate)
         {
 
             string PathFile = ($"{dirName}");
@@ -415,14 +415,17 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
             Res = m_TI.FiltrTI_1(Rastr, ref SARes);
 
             Rastr.opf("s");
-            string FullSaveFile = Path.Combine(SaveFile, dateNow, sliceName, $"{sliceName}.rg2");
+            // Извлечение только даты из startDate
+            string datePart = startDate?.ToString("yyyy_MM_dd") ?? "DefaultDate";
+
+            string FullSaveFile = Path.Combine(SaveFile, datePart, sliceName, $"{sliceName}.rg2");
             string directoryPath = Path.GetDirectoryName(FullSaveFile);
             if (!Directory.Exists(directoryPath))
             {
                 Directory.CreateDirectory(directoryPath);
             }
 
-            SavePTIData(_tableTIChannel, context, FullSaveFile, sliceName);
+            SavePTIData(_tableTIChannel, context, FullSaveFile, sliceName, Rastr);
 
             Rastr.Save(FullSaveFile, "");
         }
@@ -441,8 +444,7 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
             return parameter.parameter_value;
         }
 
-
-        public void SavePTIData(ITable _tableTIChannel, ApplicationContext context, string FullSaveFile, string sliceName)
+        public void SavePTIData(ITable _tableTIChannel, ApplicationContext context, string FullSaveFile, string sliceName, IRastr Rastr)
         {
             // Инициализация колонок
             ICol _numberTM = (ICol)_tableTIChannel.Cols.Item("Num");
@@ -454,6 +456,21 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
             ICol lagr = (ICol)_tableTIChannel.Cols.Item("lagr");
             ICol type = (ICol)_tableTIChannel.Cols.Item("type");
             ICol cod = (ICol)_tableTIChannel.Cols.Item("cod_oc");
+
+            // Обращение к таблице ТИ: Балансы P
+            ITable _active_power_imbalance = (ITable)Rastr.Tables.Item("ti_balans_p");
+            ICol n_nach_P = (ICol)_active_power_imbalance.Cols.Item("ti_ip");
+            ICol n_kon_P = (ICol)_active_power_imbalance.Cols.Item("ti_iq");
+            ICol name_P = (ICol)_active_power_imbalance.Cols.Item("name");
+            ICol dP = (ICol)_active_power_imbalance.Cols.Item("dp");
+
+            // Обращение к таблице ТИ: Балансы Q
+            ITable _reactive_power_imbalance = (ITable)Rastr.Tables.Item("ti_balans_q");
+            ICol n_nach_Q = (ICol)_reactive_power_imbalance.Cols.Item("ti_ip");
+            ICol n_kon_Q = (ICol)_reactive_power_imbalance.Cols.Item("ti_iq");
+            ICol name_Q = (ICol)_reactive_power_imbalance.Cols.Item("name");
+            ICol dq = (ICol)_reactive_power_imbalance.Cols.Item("dq");
+
 
             var sliceID = Guid.NewGuid();
 
@@ -502,7 +519,65 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
                 }
                 // Сохранение всех данных в базе
             }
+
+            int countNebP = _active_power_imbalance.Size;
+            for (int n_neb_p = 0; n_neb_p < countNebP; n_neb_p++)
+            {
+                double dPNeb = (double)dP.get_ZN(n_neb_p);
+                if (ShouldSave(dPNeb))
+                {
+                    int nNachPNeb = (int)n_nach_P.get_ZN(n_neb_p);
+                    int nKonPNeb = (int)n_kon_P.get_ZN(n_neb_p);
+                    string namePNeb = (string)name_P.get_ZN(n_neb_p);
+
+                    var activePowerImbalanceList = new ActivePowerImbalance
+                    {
+                        ID = Guid.NewGuid(),
+                        n_nach_p = nNachPNeb,
+                        n_kon_p = nKonPNeb,
+                        name_p = namePNeb,
+                        p_neb_p = dPNeb,
+                        SliceID_p = sliceID,
+                        orderIndexP = n_neb_p,
+                        experiment_label = "Подготовленные данные"
+                    };
+                    // Добавление объекта в базу данных
+                    context.active_power_imbalance.Add(activePowerImbalanceList);
+                }
+            }
+
+            int countNebQ = _reactive_power_imbalance.Size;
+
+            for (int n_neb_q = 0; n_neb_q < countNebQ; n_neb_q++)
+            {
+                double dQNeb = (double)dq.get_ZN(n_neb_q);
+                if (ShouldSave(dQNeb))
+                {
+                    int nNachQNeb = (int)n_nach_Q.get_ZN(n_neb_q);
+                    int nKonQNeb = (int)n_kon_Q.get_ZN(n_neb_q);
+                    string nameQNeb = (string)name_Q.get_ZN(n_neb_q);
+
+                    var reactivePowerImbalanceList =new ReactivePowerImbalance
+                    {
+                        ID = Guid.NewGuid(),
+                        n_nach_q = nNachQNeb,
+                        n_kon_q = nKonQNeb,
+                        name_q = nameQNeb,
+                        q_neb_q = dQNeb,
+                        SliceID_q = sliceID,
+                        orderIndexQ = n_neb_q,
+                        experiment_label = "Подготовленные данные"
+                    };
+                    // Добавление объекта в базу данных
+                    context.reactive_power_imbalance.Add(reactivePowerImbalanceList);
+                }
+            }
             context.SaveChanges();
+        }
+
+        private bool ShouldSave(double value)
+        {
+            return Math.Abs(value) > 0;
         }
 
         static bool IsRelevantTM(ICol typeTM, ICol cod_v_OC, int numTm)

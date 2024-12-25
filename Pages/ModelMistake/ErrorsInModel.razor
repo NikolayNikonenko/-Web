@@ -227,13 +227,17 @@
 
 @if (isProcessing)
 {
-    <div class="status-bar">
-        <p>@statusMessage</p>
-        <div class="progress-container">
-            <div class="progress-bar" style="width: @($"{progress}%");"></div>
+    <div class="progress mt-3">
+        <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+             role="progressbar"
+             style="width: @progress%"
+             aria-valuenow="@progress"
+             aria-valuemin="0"
+             aria-valuemax="100">
+            @progress%
         </div>
-        <p>@progress%</p>
     </div>
+    <p class="mt-2">@statusMessage</p>
 }
 
 @if (showSearch)

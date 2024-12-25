@@ -420,9 +420,13 @@
 
 @if (isProcessing)
 {
-    <div class="progress mt-4">
-        <div class="progress-bar" role="progressbar" style="width: @currentProgress%"
-             aria-valuenow="@currentProgress" aria-valuemin="0" aria-valuemax="100">
+    <div class="progress mt-3">
+        <div class="progress-bar progress-bar-striped progress-bar-animated"
+             role="progressbar"
+             style="width: @currentProgress%"
+             aria-valuenow="@currentProgress"
+             aria-valuemin="0"
+             aria-valuemax="100">
             @currentProgress%
         </div>
     </div>

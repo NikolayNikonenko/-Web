@@ -121,5 +121,8 @@ a, .btn-link {
     color: #383d41;
     border-color: #d6d8db;
 }
+.sidebar {
+    width: 300px; /* Увеличьте ширину на нужное значение */
+}
 
 
