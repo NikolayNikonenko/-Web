@@ -89,8 +89,9 @@ namespace перенос_бд_на_Web
             }
         }
 
-        private bool AnalyzeTMInFile(KeyValuePair<string, string> tmEntry, IRastr rastr, ref int telemetryCount)
+        private bool AnalyzeTMInFile(KeyValuePair<string, string> tmEntry, IRastr rastr, ref int telemetryCount, string filePath)
         {
+            rastr.Load(RG_KOD.RG_REPL, filePath, "");
             // Обращение к таблице ТИ:каналы
             ITable tableTIChannel = (ITable)rastr.Tables.Item("ti");
 
@@ -216,33 +217,42 @@ namespace перенос_бд_на_Web
 
 
             // Путь к Excel документу
-            string excelFilePath = @"D:\учеба\магистратура\3 курс\диплом ит\мое\300 ТМ, приводящих к НОС\300 ТМ для ЕОТМ.xlsx";
+            string excelFilePath = @"C:\Users\User\Desktop\учеба\магистратура\5 семак\диплом по ИТ\300 ТМ для отключения\300 ТМ для ЕОТМ.xlsx";
 
             var tmDictionary = LoadDataFromExcel(excelFilePath);
 
             // Общее количество операций (файлы * записи в tmDictionary)
             totalCount = filePaths.Count * tmDictionary.Count;
-
-            foreach (var filePath in filePaths)
+            // Создаем объект Rastr
+            IRastr rastr = new Rastr();
+            try
             {
-                // Создаем объект Rastr
-                IRastr rastr = new Rastr();
-                cancellationToken.ThrowIfCancellationRequested();
-                foreach (var kvp in tmDictionary)
+                foreach (var filePath in filePaths)
                 {
-                    Console.WriteLine($"Номер ТМ: {kvp.Key}, Наименование ТМ: {kvp.Value}");
-                    // Анализируем ТМ в файле
-                    if (AnalyzeTMInFile(kvp, rastr, ref totalCount))
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    foreach (var kvp in tmDictionary)
                     {
-                        successfulCount++; // Увеличиваем счетчик успешных ОС
+                        Console.WriteLine($"Номер ТМ: {kvp.Key}, Наименование ТМ: {kvp.Value}");
+                        // Анализируем ТМ в файле
+                        if (AnalyzeTMInFile(kvp, rastr, ref totalCount, filePath))
+                        {
+                            successfulCount++; // Увеличиваем счетчик успешных ОС
+                        }
+                        processedCount++;
+                        int progress = (processedCount * 100) / totalCount;
+                        progressCallback?.Invoke(progress);
                     }
-                    processedCount++;
-                    int progress = (processedCount * 100) / totalCount;
-                    progressCallback?.Invoke(progress);
+
                 }
-                // Освобождаем объект Rastr после обработки всех файлов
+
+            }
+            finally
+            {
+                // Освобождаем объект Rastr
                 rastr = null;
             }
+
 
             return (successfulCount, totalCount);
         }

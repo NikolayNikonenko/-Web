@@ -147,14 +147,6 @@
 
             await Task.WhenAll(loadMetricsTasks);
 
-            // // Анализ данных обоих наборов
-            // firstSetResults = await AnalyzeSetDataAsync(filePathsFirstSet);
-            // // Загрузка метрик первого набора
-            // await LoadMetricsAsync(filePathsFirstSet, true);
-            // secondSetResults = await AnalyzeSetDataAsync(filePathsSecondSet);
-            // // Загрузка метрик второго набора
-            // await LoadMetricsAsync(filePathsSecondSet, false);
-
             isChartReady = true; // Флаг для отрисовки диаграмм
         }
         catch (Exception ex)
@@ -512,7 +504,7 @@
 
         <!-- Кнопка "Добавить в отчет" -->
         <div class="mt-4 mb-4">
-            <button class="btn btn-success" @onclick="AddToReport">
+            <button class="btn btn-primary" @onclick="AddToReport">
                 Добавить в отчет
             </button>
         </div>
