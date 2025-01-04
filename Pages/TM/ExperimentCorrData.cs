@@ -71,7 +71,7 @@ namespace перенос_бд_на_Web.Pages.TM
                     double correlation = denominator != 0 ? covariance / denominator : 0;
 
                     // Статус корреляции
-                    string status = DetermineStatus(correlation);
+                    string status = DetermineStatus(correlation, _correlation_Context);
 
                     // Максимальный лагранж
                     double maxPositiveLagrange = lagranjValues.Where(x => x > 0).DefaultIfEmpty(0).Max();

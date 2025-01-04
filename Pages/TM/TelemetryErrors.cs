@@ -109,7 +109,7 @@ public class CorrData
             double denominator = Math.Sqrt(varianceMeasured * varianceEstimated);
             double correlation = denominator != 0 ? covariance / denominator : 0;
 
-            string status = DetermineStatus(correlation);
+            string status = DetermineStatus(correlation, _correlation_Context);
 
             double maxPositiveLagrange = lagranjValues.Where(x => x > 0).DefaultIfEmpty(0).Max();
             double maxNegativeLagrange = lagranjValues.Where(x => x < 0).DefaultIfEmpty(0).Min();
@@ -152,11 +152,39 @@ public class CorrData
         setStatusBarVisible(false); // Скрываем статусбар после завершения
     }
 
-    public string DetermineStatus(double correlation)
+    public string GetParameterValue(string parameterName, ApplicationContext context)
     {
-        if (correlation >= -1 && correlation < -0.5) return "Недостоверная";
-        if (correlation >= -0.5 && correlation < 0.5) return "Сомнительная";
-        if (correlation >= 0.5 && correlation <= 1) return "Достоверная";
+        // Выполняем запрос к таблице configuration_parameters
+        var parameter = context.configuration_parameters
+            .FirstOrDefault(p => p.parameter_name == parameterName);
+
+        if (parameter == null)
+        {
+            throw new Exception($"Параметр с именем {parameterName} не найден в таблице configuration_parameters.");
+        }
+
+        return parameter.parameter_value;
+    }
+
+
+
+    public string DetermineStatus(double correlation, ApplicationContext context)
+    {
+        // Получаем диапазоны из базы данных
+        var incorrectRange = GetParameterValue("IncorrectTMCorrelation", context);
+        var questionableRange = GetParameterValue("QuestionableTMCorrelation", context);
+        var reliableRange = GetParameterValue("ReliableTMCorrelation", context);
+
+        // Преобразуем строки диапазонов в массивы чисел
+        var incorrectBounds = incorrectRange.Split(';').Select(double.Parse).ToArray();
+        var questionableBounds = questionableRange.Split(';').Select(double.Parse).ToArray();
+        var reliableBounds = reliableRange.Split(';').Select(double.Parse).ToArray();
+
+        // Проверяем, куда попадает значение correlation
+        if (correlation >= incorrectBounds[0] && correlation < incorrectBounds[1]) return "Недостоверная";
+        if (correlation >= questionableBounds[0] && correlation < questionableBounds[1]) return "Сомнительная";
+        if (correlation >= reliableBounds[0] && correlation <= reliableBounds[1]) return "Достоверная";
+
         return "Неопределено";
     }
 }
