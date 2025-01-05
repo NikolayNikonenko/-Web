@@ -39,7 +39,7 @@
 
             // Загрузка данных из базы данных
             modelErrors = await _modelContext.modelErrors.AsNoTracking().ToListAsync();
-            filtredModelErrors = modelErrors;
+            filtredModelErrors = modelErrors.ToList();
         }
         catch (Exception ex)
         {
@@ -156,6 +156,7 @@
             nameof(ModelErrors.ID) => isAscending ? filtredModelErrors.OrderBy(t => t.ID).ToList() : filtredModelErrors.OrderByDescending(t => t.ID).ToList(),
             nameof(ModelErrors.IndexTm) => isAscending ? filtredModelErrors.OrderBy(t => t.IndexTm).ToList() : filtredModelErrors.OrderByDescending(t => t.IndexTm).ToList(),
             nameof(ModelErrors.ErrorType) => isAscending ? filtredModelErrors.OrderBy(t => t.ErrorType).ToList() : filtredModelErrors.OrderByDescending(t => t.ErrorType).ToList(),
+            nameof(ModelErrors.error_status) => isAscending ? filtredModelErrors.OrderBy(e => e.error_status).ToList() : filtredModelErrors.OrderByDescending(e => e.error_status).ToList(),
             _ => filtredModelErrors
         };
     }
@@ -189,6 +190,25 @@
         filtredModelErrors = modelErrors;
         SortData(currentSortColumn);
     }
+
+    private async Task UpdateErrorStatus(Guid id, string newStatus)
+    {
+        // Найти запись в коллекции
+        var modelError = filtredModelErrors.FirstOrDefault(e => e.ID == id);
+        if (modelError != null)
+        {
+            modelError.error_status = newStatus;
+
+            // Обновить запись в базе данных
+            var dbError = _modelContext.modelErrors.FirstOrDefault(e => e.ID == id);
+            if (dbError != null)
+            {
+                dbError.error_status = newStatus;
+                await _modelContext.SaveChangesAsync();
+            }
+        }
+    }
+
 }
 
 <h2>Выявление ошибок в модели</h2>
@@ -202,6 +222,15 @@
     <button @onclick="IdentifyErrors" class="btn btn-danger mb-3">Выявить ошибки</button>
 </div>
 
+<style>
+    .error-row {
+        background-color: lightcoral;
+    }
+
+    .valid-row {
+        background-color: lightgreen;
+    }
+</style>
 
 
 @if (isProcessing)
@@ -252,15 +281,27 @@
                 <th @onclick="() => SortData(nameof(ModelErrors.ErrorType))">
                     Тип ошибки @(currentSortColumn == nameof(ModelErrors.ErrorType) ? (isAscending ? "▲" : "▼") : "")
                 </th>
+                <th @onclick="() => SortData(nameof(ModelErrors.error_status))">
+                    Статус ошибки @(currentSortColumn == nameof(ModelErrors.error_status) ? (isAscending ? "▲" : "▼") : "")
+                </th>
+
             </tr>
         </thead>
         <tbody>
-            @foreach (var modelError in modelErrors)
+            @foreach (var modelError in filtredModelErrors)
             {
-                <tr>
+                <tr class="@(modelError.error_status == "Ошибка" ? "error-row" : modelError.error_status == "Допустимость" ? "valid-row" : "")">
                     <td>@modelError.ID</td>
                     <td>@modelError.IndexTm</td>
                     <td>@modelError.ErrorType</td>
+
+                    <td>
+                        <select class="form-select"
+                                @onchange="@(e => UpdateErrorStatus(modelError.ID, e.Value?.ToString()))">
+                            <option value="Ошибка" selected="@((modelError.error_status == "Ошибка") ? true : false)">Ошибка</option>
+                            <option value="Допустимость" selected="@((modelError.error_status == "Допустимость") ? true : false)">Допустимость</option>
+                        </select>
+                    </td>
                 </tr>
             }
         </tbody>
