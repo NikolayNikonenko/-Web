@@ -111,6 +111,7 @@ namespace перенос_бд_на_Web.Pages.TM
             {
                 setStatusBarVisible(false); // Скрываем статусбар после завершения
 
+
             }
         }
     }

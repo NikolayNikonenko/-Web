@@ -12,6 +12,20 @@
 
 <h3>Предварительная подготовка файлов</h3>
 
+<style>
+    .status-dostovernaya {
+        background-color: lightgreen;
+    }
+
+    .status-somnitelnaya {
+        background-color: lightyellow;
+    }
+
+    .status-nedostovernaya {
+        background-color: lightcoral;
+    }
+</style>
+
 <div>
     <button class="btn btn-primary mt-2" @onclick="ToggleDateIntervalFields">Задать интервал для расчета ПТИ ДТИ</button>
 </div>
@@ -240,6 +254,17 @@
             .AnyAsync(t => t.experiment_label == "Подготовленные данные");
     }
 
+    private string GetRowClass(string status)
+    {
+        return status switch
+        {
+            "Достоверная" => "status-dostovernaya",
+            "Сомнительная" => "status-somnitelnaya",
+            "Недостоверная" => "status-nedostovernaya",
+            _ => string.Empty
+        };
+    }
+
 }
 
 @if (isCalculating)
@@ -352,7 +377,7 @@
         <tbody>
             @foreach (var result in filteredResultsTable)
             {
-                <tr>
+                <tr class="@GetRowClass(result.Status)">
                     <td>@result.ID</td>
                     <td>@result.IndexTm</td>
                     <td>@Math.Round(result.CorrTm,4)</td>

@@ -107,6 +107,7 @@
         loadingMessage = "Получение данных из БД...";
         await LoadData();
         isLoading = false; // Снимаем флаг после завершения загрузки
+        await InvokeAsync(StateHasChanged);
     }
 
 
@@ -137,12 +138,13 @@
 
             // Загружаем уникальные значения experiment_label
             experimentLabels = await GetUniqueExperimentLabels();
-
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error fetching data: {ex.Message}");
         }
+        // Обновляем интерфейс
+        await InvokeAsync(StateHasChanged);
     }
 
     private void SortData(string column)
@@ -275,6 +277,7 @@
             // Отображаем только входные данные
             filteredTm = tm.Where(t => t.experiment_label == "Входные данные").ToList();
         }
+
     }
 
     public string GetExperimentValue(double indexTm, string experimentLabel, string fieldName)
@@ -641,12 +644,28 @@
             applyFgo
         );
 
+        // Принудительно обновляем данные
+        await RefreshDataAfterExperiment();
+
         // Очищаем выбранные действия и закрываем модальное окно
         //selectedActions.Clear();
         showModal = false;
         Console.WriteLine("Выбранные действия успешно выполнены.");
         isActionConfirmed = true;
         ToggleMonitoringOptions();
+    }
+
+    private async Task RefreshDataAfterExperiment()
+    {
+        availableValues = await _context.TMValues
+            .Where(tm => !tm.experiment_label.StartsWith("Подготовленные"))
+            .Select(tm => tm.experiment_label)
+            .Distinct()
+            .ToListAsync();
+        availableExperiments = availableValues;
+
+        // Принудительно обновляем интерфейс
+        await InvokeAsync(StateHasChanged);
     }
 
 
@@ -830,7 +849,14 @@
 
         // Загружаем все данные ТМ, если `filteredTMValues` не задан
         var tmValues = filteredTMValues ?? await MonitoringService.MonitorAllTMAsync(filteredTMValues);
+
         await ExecuteCorrelationCalculation(tmValues);
+
+        isLoading = true;
+        loadingMessage = "Данные обновляются";
+
+        await InvokeAsync(StateHasChanged); // Убедитесь, что интерфейс обновлен
+        isLoading = false;
     }
 
     // Метод расчета корреляции для отфильтрованных ТМ (используется в ApplyChangesAndCalculateCorrelation)
@@ -838,6 +864,7 @@
     {
         if (isCalculating) return;
         await ExecuteCorrelationCalculation(tmValues);
+        await InvokeAsync(StateHasChanged); // Убедитесь, что интерфейс обновлен
     }
 
     // Общий метод для расчета корреляции
@@ -861,6 +888,15 @@
                 endDate,                 // Конечная дата
                 cancellationTokenSource.Token
             );
+
+            // Обновляем данные для таблицы
+            filteredTm = await _context.tm
+                .AsNoTracking()
+                .Where(t => t.experiment_label == "Входные данные")
+                .ToListAsync();
+
+            await InvokeAsync(StateHasChanged); // Обновляем интерфейс
+
         }
         catch (OperationCanceledException)
         {
@@ -875,7 +911,10 @@
             isCalculating = false;
             isStatusBarVisible = false;
             cancellationTokenSource.Dispose();
+
+
             await InvokeAsync(StateHasChanged);
+
         }
     }
 
@@ -921,6 +960,7 @@
     {
         try
         {
+            isCalculating = true;
 
             // Подтверждаем действия для текущего списка
             ConfirmActions(filteredTMValues);
@@ -956,10 +996,11 @@
                 filteredTMValues = originalTMValues;
                 originalTMValues = null; // Сбрасываем оригинал после восстановления
             }
+            isCalculating = false;
 
-            // Обновляем интерфейс
-            await InvokeAsync(StateHasChanged);
         }
+        await LoadData();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task HandleExperimentChange(ChangeEventArgs e)
@@ -995,7 +1036,7 @@
 }
 
 <div>
-    <button @onclick="ShowChartInput" class="btn btn-primary mt-2">Показать график корреляции</button>
+    <button @onclick="ShowChartInput" class="btn btn-primary mt-2 mb-2">Показать график корреляции</button>
 </div>
 
 @if (showSearch)
@@ -1331,7 +1372,6 @@
         </select>
     </div>
 }
-
 
 
     @if (isLoading)
