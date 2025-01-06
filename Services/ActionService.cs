@@ -111,7 +111,7 @@ namespace перенос_бд_на_Web.Services
                 }
 
                 // Расчет корреляции
-                tmValues = await context.TMValues
+                tmValues = await context.telemetry_values
                     .Where(tm => tm.experiment_label == experimentLabel)
                     .ToListAsync();
 
@@ -429,7 +429,7 @@ namespace перенос_бд_на_Web.Services
             // Сохраняем найденные записи одним запросом
             if (newValues.Any())
             {
-                await context.TMValues.AddRangeAsync(newValues);
+                await context.telemetry_values.AddRangeAsync(newValues);
                 await context.SaveChangesAsync();
             }
 
@@ -643,7 +643,7 @@ namespace перенос_бд_на_Web.Services
                 Guid parsedUid = Guid.Parse(uid);
 
                 // Извлечение уникальных сочетаний IndexTm и Id1
-                var indexTmId1Pairs = context.tm
+                var indexTmId1Pairs = context.correlation_coefficients
                     .Where(tm => tm.ID == parsedUid) // Фильтрация по UID
                     .Select(tm => new { IndexTm = (int)tm.IndexTm, tm.Id1 }) // Приведение IndexTm к int
                     .Distinct() // Уникальные записи

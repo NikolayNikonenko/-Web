@@ -515,7 +515,7 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
                         experiment_label = "Подготовленные данные"
                     };
                     // Добавление объекта в базу данных
-                    context.TMValues.Add(tmValue);
+                    context.telemetry_values.Add(tmValue);
                 }
                 // Сохранение всех данных в базе
             }

@@ -116,7 +116,7 @@
         try
         {
             // Загружаем все данные из таблицы
-            tm = await _context.tm.AsNoTracking().ToListAsync();
+            tm = await _context.correlation_coefficients.AsNoTracking().ToListAsync();
 
             // Фильтруем данные с меткой "Входные данные" для исходной таблицы
             filteredTm = tm.Where(t => t.experiment_label == "Входные данные").ToList();
@@ -240,42 +240,54 @@
     {
         selectedExperiment = e.Value?.ToString();
 
-        if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
+        var options = new DbContextOptionsBuilder<ApplicationContext>()
+    .UseNpgsql("Host=localhost;Port=5432;Database=БД_ИТ_диплом;Username=postgres;Password=HgdMoxN2;MaxPoolSize=1000")
+    .Options;
+
+        using (var context = new ApplicationContext(options))
         {
-            // Получаем входные данные и экспериментальные данные
-            var inputData = tm.Where(t => t.experiment_label == "Входные данные").ToList();
-            var experimentData = tm.Where(t => t.experiment_label == selectedExperiment).ToList();
 
-            // Выводим количество записей для входных данных и экспериментальных данных
-            Console.WriteLine($"Входных данных: {inputData.Count}, Экспериментальных данных: {experimentData.Count}");
 
-            // Объединяем входные данные и экспериментальные
-            filteredTm = inputData
-                .Where(input => experimentData.Any(experiment => experiment.IndexTm == input.IndexTm))
-                .Select(input =>
-                {
-                    var experiment = experimentData.First(experiment => experiment.IndexTm == input.IndexTm);
+            if (!string.IsNullOrEmpty(selectedExperiment) && selectedExperiment != "Входные данные")
+            {
+                // Загружаем актуальные данные из базы
+                var allTm = _context.correlation_coefficients.ToList(); // Получаем актуальные данные
 
-                    return new NedostovernayaTM
-                        {
-                            ID = input.ID, // Сохраняем оригинальный ID, если он важен
-                            IndexTm = input.IndexTm,
-                            experiment_label = input.experiment_label,
-                            CorrTm = experiment.CorrTm,
-                            Status = experiment.Status,
-                            MaxLagranj = experiment.MaxLagranj,
-                            AvgLagranj = experiment.AvgLagranj,
-                            // Добавляем другие свойства, если они есть
-                        };
-                }).ToList();
+                // Получаем входные данные и экспериментальные данные
+                var inputData = allTm.Where(t => t.experiment_label == "Входные данные").ToList();
+                var experimentData = allTm.Where(t => t.experiment_label == selectedExperiment).ToList();
 
-            // Выводим отфильтрованные данные
-            Console.WriteLine($"Отфильтрованных данных: {filteredTm.Count}");
-        }
-        else
-        {
-            // Отображаем только входные данные
-            filteredTm = tm.Where(t => t.experiment_label == "Входные данные").ToList();
+                // Выводим количество записей для входных данных и экспериментальных данных
+                Console.WriteLine($"Входных данных: {inputData.Count}, Экспериментальных данных: {experimentData.Count}");
+
+                // Объединяем входные данные и экспериментальные
+                filteredTm = inputData
+                    .Where(input => experimentData.Any(experiment => experiment.IndexTm == input.IndexTm))
+                    .Select(input =>
+                    {
+                        var experiment = experimentData.First(experiment => experiment.IndexTm == input.IndexTm);
+
+                        return new NedostovernayaTM
+                            {
+                                ID = input.ID, // Сохраняем оригинальный ID, если он важен
+                                IndexTm = input.IndexTm,
+                                experiment_label = input.experiment_label,
+                                CorrTm = experiment.CorrTm,
+                                Status = experiment.Status,
+                                MaxLagranj = experiment.MaxLagranj,
+                                AvgLagranj = experiment.AvgLagranj,
+                                // Добавляем другие свойства, если они есть
+                            };
+                    }).ToList();
+
+                // Выводим отфильтрованные данные
+                Console.WriteLine($"Отфильтрованных данных: {filteredTm.Count}");
+            }
+            // else
+            // {
+            //     // Отображаем только входные данные
+            //     filteredTm = tm.Where(t => t.experiment_label == "Входные данные").ToList();
+            // }
         }
 
     }
@@ -305,7 +317,7 @@
         else
         {
             // Если данных для эксперимента нет, проверяем данные для "Входные данные"
-            var baselineData = _context.tm
+            var baselineData = tm
                 .FirstOrDefault(t => t.IndexTm == indexTm && t.experiment_label == "Входные данные");
 
             if (baselineData != null)
@@ -341,10 +353,10 @@
         }
 
         // Шаг 1: Извлекаем данные по IndexTM
-        IQueryable<TMValues> query = _context.TMValues.Where(tv => tv.IndexTM == tmIndex);
+        IQueryable<TMValues> query = _context.telemetry_values.Where(tv => tv.IndexTM == tmIndex);
 
         // Выбор входных данных
-        var inputData = await _context.TMValues
+        var inputData = await _context.telemetry_values
             .Where(tm => tm.IndexTM == tmIndex && tm.experiment_label == "Входные данные")
             .ToListAsync();
 
@@ -352,7 +364,7 @@
         List<TMValues> experimentData = new();
         if (!string.IsNullOrEmpty(selectedExperiment))
         {
-            experimentData = await _context.TMValues
+            experimentData = await _context.telemetry_values
                 .Where(tv => tv.IndexTM == tmIndex && tv.experiment_label == selectedExperiment)
                 .ToListAsync();
         }
@@ -509,7 +521,7 @@
             }
 
             // Формирование запроса с фильтрацией
-            IQueryable<TMValues> filteredTMValuesQuery = _context.TMValues
+            IQueryable<TMValues> filteredTMValuesQuery = _context.telemetry_values
                 .AsNoTracking()
                 .Where(t => sliceIdsInRange.Contains(t.SliceID));
 
@@ -657,7 +669,7 @@
 
     private async Task RefreshDataAfterExperiment()
     {
-        availableValues = await _context.TMValues
+        availableValues = await _context.telemetry_values
             .Where(tm => !tm.experiment_label.StartsWith("Подготовленные"))
             .Select(tm => tm.experiment_label)
             .Distinct()
@@ -747,7 +759,7 @@
 
     public async Task<List<string>> GetUniqueExperimentLabels()
     {
-        var labels = await _context.TMValues
+        var labels = await _context.telemetry_values
             .Where(tm => !tm.experiment_label.StartsWith("Эксперимент"))
             .Select(tm => tm.experiment_label)
             .Distinct()
@@ -890,7 +902,7 @@
             );
 
             // Обновляем данные для таблицы
-            filteredTm = await _context.tm
+            filteredTm = await _context.correlation_coefficients
                 .AsNoTracking()
                 .Where(t => t.experiment_label == "Входные данные")
                 .ToListAsync();
@@ -1068,7 +1080,7 @@
 <!-- Кнопка для показа выбранных действий -->
 @if (selectedActions.Any())
 {
-    <button class="btn btn-primary mt-2" @onclick="ToggleSelectedActions">Показать выбранные действия</button>
+    <button class="btn btn-primary mt-2 mb-2" @onclick="ToggleSelectedActions">Показать выбранные действия</button>
 }
 
 @if (showModal)

@@ -100,7 +100,7 @@ namespace перенос_бд_на_Web.Pages.TM
                     progressCallback(progress);
                 }
 
-                await _correlation_Context.tm.AddRangeAsync(newRecords);
+                await _correlation_Context.correlation_coefficients.AddRangeAsync(newRecords);
                 await _correlation_Context.SaveChangesAsync();
             }
             catch (DbUpdateException ex)

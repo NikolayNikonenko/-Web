@@ -54,7 +54,7 @@ namespace перенос_бд_на_Web.Services
                 return new List<TMValues>();
             }
 
-            var filteredTMValues = await _context.TMValues
+            var filteredTMValues = await _context.telemetry_values
                 .Where(t => sliceIdsInRange.Contains(t.SliceID))
                 .ToListAsync();
 
@@ -71,7 +71,7 @@ namespace перенос_бд_на_Web.Services
         // Метод для получения всех данных с опциональным прореживанием
         private async Task<List<TMValues>> RetrieveAllDataAsync(bool isThinning, int thinningInterval)
         {
-            var allData = await _context.TMValues.ToListAsync();
+            var allData = await _context.telemetry_values.ToListAsync();
             return isThinning ? ApplyThinning(allData, thinningInterval) : allData;
         }
 

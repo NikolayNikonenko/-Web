@@ -20,7 +20,7 @@ namespace перенос_бд_на_Web.Services
                 Console.WriteLine("Получаем последний эксперимент...");
 
                 // Загружаем все метки "Эксперимент" в память
-                var allExperiments = await _context.TMValues
+                var allExperiments = await _context.telemetry_values
                     .Where(tm => tm.experiment_label.StartsWith("Эксперимент"))
                     .Select(tm => tm.experiment_label)
                     .ToListAsync();
@@ -64,7 +64,7 @@ namespace перенос_бд_на_Web.Services
         public async Task<List<TMValues>> MonitorUnreliableAndQuestionableTMAsync(List<TMValues> filteredTMValues)
         {
             var result = (from tmValue in filteredTMValues
-                          join tm in _context.tm
+                          join tm in _context.correlation_coefficients
                           on new { IndexTM = (int)tmValue.IndexTM, tmValue.Id1 }
                           equals new { IndexTM = (int)tm.IndexTm, tm.Id1 }
                           where tm.Status == "Недостоверная" || tm.Status == "Сомнительная"
@@ -78,7 +78,7 @@ namespace перенос_бд_на_Web.Services
         public async Task<List<TMValues>> MonitorUnreliableTMAsync(List<TMValues> filteredTMValues)
         {
             var result = (from tmValue in filteredTMValues
-                          join unreliable in _context.tm
+                          join unreliable in _context.correlation_coefficients
                           on new { IndexTM = (int)tmValue.IndexTM, tmValue.Id1 } equals new { IndexTM = (int)unreliable.IndexTm, unreliable.Id1 }
                           where unreliable.Status == "Недостоверная"
                           group tmValue by new { tmValue.IndexTM, tmValue.Id1, tmValue.Privyazka } into grouped
@@ -133,7 +133,7 @@ namespace перенос_бд_на_Web.Services
         public async Task<bool> CheckIfTMExistsAsync(int indexTM)
         {
             // Предполагаем, что `TMValues` — это таблица в вашем `ApplicationContext`, содержащая номера телеметрии
-            return await _context.TMValues.AnyAsync(tm => tm.IndexTM == indexTM);
+            return await _context.telemetry_values.AnyAsync(tm => tm.IndexTM == indexTM);
         }
 
 

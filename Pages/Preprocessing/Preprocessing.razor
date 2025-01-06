@@ -67,7 +67,7 @@
                 endDate = lastInterval.endDate;
             }
             // Проверяем, есть ли данные с меткой "Подготовленные данные" в таблице tm
-            var preparedData = await _context.tm
+            var preparedData = await _context.correlation_coefficients
                 .Where(tm => tm.experiment_label == "Подготовленные данные")
                 .ToListAsync();
 
@@ -215,7 +215,7 @@
         progress = 0;
         try
         {
-            preparedDataSet = await _context.TMValues
+            preparedDataSet = await _context.telemetry_values
                 .Where(tm => tm.experiment_label == "Подготовленные данные")
                 .ToListAsync();
 
@@ -235,7 +235,7 @@
             );
 
             // После завершения показать таблицу
-            resultsTable = await _context.tm
+            resultsTable = await _context.correlation_coefficients
                 .Where(tm => tm.experiment_label == "Подготовленные данные")
                 .ToListAsync();
 
@@ -247,10 +247,25 @@
         {
             Console.WriteLine($"Ошибка расчёта корреляции: {ex.Message}");
         }
+        await ReloadResultsTable();
     }
+
+    private async Task ReloadResultsTable()
+    {
+        resultsTable = await _context.correlation_coefficients
+            .Where(tm => tm.experiment_label == "Подготовленные данные")
+            .ToListAsync();
+
+        // Обновляем таблицу после фильтрации
+        FilterByNameTM();
+
+        showResultsTable = filteredResultsTable.Any();
+        StateHasChanged();
+    }
+
     public async Task<bool> HasPreparedData()
     {
-        return await _context.tm
+        return await _context.correlation_coefficients
             .AnyAsync(t => t.experiment_label == "Подготовленные данные");
     }
 

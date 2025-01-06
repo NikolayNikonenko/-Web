@@ -31,7 +31,7 @@ public class CorrData
 
         if ((filteredTMValues == null || !filteredTMValues.Any()) && (startTime.HasValue && endTime.HasValue))
         {
-            var allTMValues = await _correlation_Context.TMValues
+            var allTMValues = await _correlation_Context.telemetry_values
                 .AsNoTracking()
                 .Where(t => t.experiment_label == originalDataSet)
                 .ToListAsync();
@@ -43,7 +43,7 @@ public class CorrData
         }
         else if (filteredTMValues == null || !filteredTMValues.Any())
         {
-            filteredTMValues = await _correlation_Context.TMValues
+            filteredTMValues = await _correlation_Context.telemetry_values
                 .AsNoTracking()
                 .Where(t => t.experiment_label == originalDataSet)
                 .Select(t => new TMValues
@@ -141,7 +141,7 @@ public class CorrData
 
         try
         {
-            await _correlation_Context.tm.AddRangeAsync(newRecords);
+            await _correlation_Context.correlation_coefficients.AddRangeAsync(newRecords);
             await _correlation_Context.SaveChangesAsync();
         }
         catch (DbUpdateException ex)

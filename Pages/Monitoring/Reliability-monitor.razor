@@ -226,7 +226,7 @@
         await using var context = ContextFactory.CreateDbContext();
 
         // Шаг 1: Фильтрация данных через связь TMValues и Slices
-        var filteredData = context.TMValues
+        var filteredData = context.telemetry_values
             .Join(context.slices,           // Присоединяем таблицу Slices
                   tm => tm.SliceID,           // Поле связи из TMValues
                   slice => slice.SliceID,          // Поле связи из Slices
@@ -251,7 +251,7 @@
     private async Task<double> CalculateStandardDeviationAsync(IEnumerable<string> slicePaths)
     {
         await using var context = ContextFactory.CreateDbContext();
-        var query = context.TMValues
+        var query = context.telemetry_values
             .Join(context.slices,
                   tm => tm.SliceID,
                   slice => slice.SliceID,
