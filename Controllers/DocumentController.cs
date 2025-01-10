@@ -12,7 +12,7 @@ namespace перенос_бд_на_Web.Controllers
         public IActionResult GetAboutDocument()
         {
             // путь к документу
-            var filePath = "C:\\Users\\User\\Desktop\\учеба\\магистратура\\5 семак\\диплом по ИТ\\страница о программе\\Руководство пользователя.docx";
+            var filePath = "D:\\учеба\\магистратура\\3 курс\\диплом ит\\мое\\Руководство пользователя\\Руководство пользователя.docx";
 
             if (!System.IO.File.Exists(filePath))
             {

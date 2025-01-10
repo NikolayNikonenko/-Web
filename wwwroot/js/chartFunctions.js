@@ -6,10 +6,24 @@ async function generateChart(chartElement, inputData, experimentData, chartTitle
         return;
     }
 
-    // Удаление старого графика, если он существует
-    if (currentChart) {
-        currentChart.destroy();
-    }
+    //// Удаление старого графика, если он существует
+    //if (currentChart) {
+    //    currentChart.destroy();
+    //}
+
+    // Удаление класса скрытия
+    chartElement.classList.remove('hidden');
+
+        if (currentChart) {
+            currentChart.destroy(); // Уничтожение графика
+            currentChart = null;   // Сбрасываем переменную
+        }
+        const canvas = document.getElementById('chart');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Очистка области графика
+        }
+    
 
    const labels = Array.from(new Set([...inputData, ...experimentData].map(data => data.numberOfSrez)));
 
@@ -110,6 +124,20 @@ async function generateChart(chartElement, inputData, experimentData, chartTitle
         }
     });
 }
+
+function destroyChart() {
+    if (currentChart) {
+        currentChart.destroy(); // Уничтожение текущего графика
+        currentChart = null;    // Сброс переменной
+    }
+    // Очистка элемента canvas
+    const canvas = document.getElementById("chart");
+    if (canvas) {
+        const context = canvas.getContext("2d");
+        context.clearRect(0, 0, canvas.width, canvas.height); // Очистка содержимого
+    }
+}
+
 // Функция для группировки данных по ключу
 function groupBy(array, key) {
     return array.reduce((result, item) => {

@@ -418,7 +418,9 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
             // Извлечение только даты из startDate
             string datePart = startDate?.ToString("yyyy_MM_dd") ?? "DefaultDate";
 
-            string FullSaveFile = Path.Combine(SaveFile, datePart, sliceName, $"{sliceName}.rg2");
+            string currentDate = DateTime.Now.ToString("yyyy_MM_dd");
+
+            string FullSaveFile = Path.Combine(SaveFile, currentDate, datePart, sliceName, $"{sliceName}.rg2");
             string directoryPath = Path.GetDirectoryName(FullSaveFile);
             if (!Directory.Exists(directoryPath))
             {
@@ -483,6 +485,7 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
             };
 
             context.slices.Add(slice);
+            context.SaveChanges();
 
             int rowCount = _tableTIChannel.Size;
 

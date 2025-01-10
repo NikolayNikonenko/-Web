@@ -101,6 +101,8 @@
 
     private bool IsMessageHiding { get; set; } = false;
 
+    private bool isIntervalApplied = false;
+
     protected override async Task OnInitializedAsync()
     {
         isLoading = true; // Устанавливаем флаг в true перед началом загрузки
@@ -219,10 +221,22 @@
         showChart = false; // Скрыть график при показе ввода для нового графика
     }
 
-    private void HideChart()
+    private async void HideChart()
     {
+        // Скрыть график на странице
         showChart = false;
         chartDataAvailable = false;
+        // Уничтожить текущий график через JS
+        try
+        {
+            await JS.InvokeVoidAsync("destroyChart");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка при уничтожении графика: {ex.Message}");
+        }
+        // Обновить интерфейс
+        StateHasChanged();
     }
 
     private string GetYAxisLabel(string privyazka)
@@ -345,6 +359,8 @@
 
     private async Task GenerateChart()
     {
+        chartDataAvailable = true;
+        showChart = true;
         if (!double.TryParse(tmIndexInput, out double tmIndex))
         {
             chartDataAvailable = false;
@@ -382,10 +398,15 @@
         {
 
             await JS.InvokeVoidAsync("generateChart", chartElement, filteredInputData, filteredExperimentData, chartTitle, yAxisLabel);
+            // Обновляем переменные после успешного вызова
+            // chartDataAvailable = true;
+            // showChart = true;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Ошибка вызова JavaScript: {ex.Message}");
+            chartDataAvailable = false;
+            showChart = false;
         }
     }
 
@@ -440,6 +461,7 @@
     }
     private async Task ApplyTimeIntervalFilter(int pruningInterval)
     {
+        isIntervalApplied = true;
         await LoadTMValues(isThinningEnabled, pruningInterval);
     }
 
@@ -556,7 +578,7 @@
         }
         catch (OutOfMemoryException)
         {
-            await NotifyUserAsync("Заданный интервал слишком велик. Попробуйте задать меньший диапазон времени или увеличить шаг прореживания срезов.", "error");
+            await NotifyUserAsync("Заданный интервал слишком велик. Попробуйте обновить страницу и задать меньший диапазон времени или увеличить шаг прореживания срезов.", "error");
             return;
         }
 
@@ -823,13 +845,14 @@
 
 
 <!-- Кнопка для запуска расчёта корреляции для всех ТМ -->
-<button @onclick="OnCalculateCorrelation" class="btn btn-primary mt-2" disabled="@isCalculating">
+<button @onclick="OnCalculateCorrelation" class="btn btn-primary mt-2"
+        disabled="@(!isIntervalApplied || isCalculating)">
     Рассчитать корреляцию
 </button>
 
 
 <!-- Кнопка для остановки расчёт -->
-<button @onclick="OnStopCalculation" class="btn btn-danger mt-2" disabled="@(isCalculating == false)">
+<button @onclick="OnStopCalculation" class="btn btn-danger mt-2" disabled="@(!isIntervalApplied || isCalculating == false)">
     Остановить расчет
 </button>
 
@@ -1048,22 +1071,30 @@
 }
 
 <div>
-    <button @onclick="ShowChartInput" class="btn btn-primary mt-2 mb-2">Показать график корреляции</button>
+    <button @onclick="ShowChartInput" class="btn btn-primary mt-2 mb-2"  disabled="@(!isIntervalApplied)">
+        Показать график корреляции</button>
 </div>
 
 @if (showSearch)
 {
     <div class="mb-3">
-        <input @bind="searchTerm" placeholder="Поиск по Index TM" class="form-control" />
+        <input @bind="searchTerm" placeholder="Поиск по полю Индекс ТМ" class="form-control" />
         <button @onclick="SearchData" class="btn btn-primary mt-2">Искать</button>
         <button @onclick="ResetSearch" class="btn btn-secondary mt-2 ml-2">Сбросить</button>
+    </div>
+}
+
+@if (showChart)
+{
+    <div class="mt-4">
+        <canvas id="chart" width="400" height="200" @ref="chartElement"></canvas>
     </div>
 }
 
 @if (showChartInput)
 {
     <div class="mb-3">
-        <canvas id="chart" width="400" height="200" @ref="chartElement"></canvas>
+        @* <canvas id="chart" width="400" height="200" @ref="chartElement"></canvas> *@
         <input @bind="tmIndexInput" placeholder="Введите номер ТМ" class="form-control" />
         <button @onclick="GenerateChart" class="btn btn-primary mt-2">Построить график</button>
     </div>
@@ -1072,8 +1103,8 @@
 @if (chartDataAvailable && showChart)
 {
     <div class="mt-4">
+        @* <canvas id="chart" width="400" height="200" @ref="chartElement"></canvas> *@
         <button @onclick="HideChart" class="btn btn-secondary mb-2">Закрыть график</button>
-        <canvas id="chart" width="400" height="200" @ref="chartElement"></canvas>
     </div>
 }
 

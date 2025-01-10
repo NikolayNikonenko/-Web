@@ -139,7 +139,7 @@ namespace перенос_бд_на_Web.Pages.ModelMistake
 
             var db = _modelContext;
 
-            db.Database.ExecuteSqlRaw("TRUNCATE TABLE \"modelErrors\" RESTART IDENTITY;");
+            db.Database.ExecuteSqlRaw("DELETE FROM \"modelErrors\";");
 
             for (int w = 0; w < povtori.Length; w++)
             {

@@ -12,6 +12,10 @@ namespace перенос_бд_на_Web.Models
         public DbSet<FilePath> file_paths { get; set; }
         public DbSet<CalculationIntervalForPTI> calculationIntervalForPTIs { get; set; }
         public DbSet<ConfigurationParameter> configuration_parameters { get; set; }
+        public DbSet<Report> report { get; set; }
+        public DbSet<Experiment> experiment { get; set; }
+        public DbSet<ReliabilityAndValidityIndicators> reliability_and_validity_indicators { get; set; }
+        public DbSet<ValidatedTelemetry> validated_telemetry { get; set; }
         //public DbSet <ExperimentFiles> experiment_file { get; set; }
         //public DbSet <ModifiedTMValues> tm_values_after_verification { get; set; }
 
