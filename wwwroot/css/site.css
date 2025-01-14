@@ -125,4 +125,9 @@ a, .btn-link {
     width: 300px; /* Увеличьте ширину на нужное значение */
 }
 
+.error-message {
+    margin-top: 10px;
+    margin-left: 20px;
+    color: red;
+}
 

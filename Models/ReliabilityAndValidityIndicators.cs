@@ -1,7 +1,10 @@
-﻿namespace перенос_бд_на_Web.Models
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace перенос_бд_на_Web.Models
 {
     public class ReliabilityAndValidityIndicators
     {
+        [Key]
         public Guid id_indicator { get; set; }
         public int count_nos { get; set; }
         public int total_number_of_os { get; set; }

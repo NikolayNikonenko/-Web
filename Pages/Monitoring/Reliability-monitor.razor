@@ -96,9 +96,20 @@
             return;
         }
 
+        if (startDateTime >= endDateTime)
+        {
+            errorMessage = "Дата начала должна быть меньше даты окончания.";
+            return;
+        }
+
         if (string.IsNullOrEmpty(firstSelectedSet) || string.IsNullOrEmpty(secondSelectedSet))
         {
             errorMessage = "Необходимо выбрать оба набора для сравнения.";
+            return;
+        }
+        if (firstSelectedSet == secondSelectedSet)
+        {
+            errorMessage = "Сравниваемые наборы не должны быть одинаковыми.";
             return;
         }
 
@@ -524,7 +535,7 @@
 
 @if (!string.IsNullOrEmpty(errorMessage))
 {
-    <p class="text-danger">@errorMessage</p>
+    <p class="text-danger" style="margin-top: 10px;">@errorMessage</p>
 }
 
 <style>

@@ -48,6 +48,7 @@
     private string currentSortColumn;
     private bool isAscending = true;
     private bool hasPreparedData = false;
+    private string errorMessage;
 
     private CalculationIntervalForPTI lastInterval;
 
@@ -146,6 +147,19 @@
 
     private async Task ApplyFilters()
     {
+        if (startDate == null || endDate == null)
+        {
+            errorMessage = "Необходимо указать начальную и конечную дату и время.";
+            return;
+        }
+
+        if (startDate >= endDate)
+        {
+            errorMessage = "Дата начала должна быть меньше даты окончания.";
+            return;
+        }
+
+
         try
         {
             filteredData = await _dataFilterService.ApplyTimeIntervalFilterAsync(startDate, endDate, isThinning, thinningInterval);
@@ -280,6 +294,11 @@
         };
     }
 
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <p class="text-danger" style="margin-top: 10px;">@errorMessage</p>
 }
 
 @if (isCalculating)

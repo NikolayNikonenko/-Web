@@ -25,7 +25,7 @@
     private bool isProcessing = false; // Указывает, идет ли операция
     private int progress = 0; // Прогресс выполнения (в процентах)
     private string statusMessage = "Ожидание начала операции..."; // Сообщение о текущем статусе
-
+    private string? errorMessage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -43,7 +43,9 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Ошибка при загрузке данных: {ex.Message}");
+            errorMessage = $"Ошибка при загрузке данных: {ex.Message}";
+            Console.WriteLine(errorMessage);
+            StateHasChanged();
         }
     }
 
@@ -72,7 +74,9 @@
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Ошибка при расчете: {ex.Message}");
+                errorMessage = $"Ошибка при расчете: {ex.Message}";
+                Console.WriteLine(errorMessage);
+                StateHasChanged();
             }
             finally
             {
@@ -81,7 +85,9 @@
         }
         else
         {
-            Console.WriteLine("Файл не был выбран или сохранен.");
+            errorMessage = "Файл не был выбран или сохранен.";
+            Console.WriteLine(errorMessage);
+            StateHasChanged();
         }
     }
 
@@ -100,7 +106,9 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Ошибка при обновлении пути файла: {ex.Message}");
+            errorMessage = $"Ошибка при обновлении пути файла: {ex.Message}";
+            Console.WriteLine(errorMessage);
+            StateHasChanged();
         }
     }
 
@@ -134,7 +142,9 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Ошибка при сохранении файла: {ex.Message}");
+            errorMessage = $"Ошибка при сохранении файла: {ex.Message}";
+            Console.WriteLine(errorMessage);
+            StateHasChanged();
         }
     }
 
@@ -213,6 +223,10 @@
 
 <h2>Выявление ошибок в модели</h2>
 
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <p class="text-danger" style="margin-top: 10px;">@errorMessage</p>
+}
 
 <div class="mb-3">
     <InputFile OnChange="OnInputFileChange" MaxAllowedSize="10485760" /> <!-- 10 MB -->
@@ -313,6 +327,10 @@ else
 }
 
 <style>
+    .text-danger {
+        color: red; /* Убедитесь, что текст не прозрачный или не имеет display: none */
+    }
+
     .status-bar {
         margin-top: 20px;
         text-align: center;

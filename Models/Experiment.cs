@@ -1,7 +1,10 @@
-﻿namespace перенос_бд_на_Web.Models
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace перенос_бд_на_Web.Models
 {
     public class Experiment
     {
+        [Key]
         public Guid id_experiment { get; set; }
         public DateTime? date_experiment { get; set; }
         public DateTime date_experiment_interval { get; set; }

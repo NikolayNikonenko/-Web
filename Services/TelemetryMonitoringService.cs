@@ -127,16 +127,10 @@ namespace перенос_бд_на_Web.Services
             return await Task.FromResult(combined); // Возвращаем объединенный список
         }
 
-
-
-
         public async Task<bool> CheckIfTMExistsAsync(int indexTM)
         {
             // Предполагаем, что `TMValues` — это таблица в вашем `ApplicationContext`, содержащая номера телеметрии
             return await _context.telemetry_values.AnyAsync(tm => tm.IndexTM == indexTM);
         }
-
-
-
     }
 }

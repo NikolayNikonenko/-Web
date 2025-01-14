@@ -353,37 +353,6 @@ namespace перенос_бд_на_Web.Services
                         Privyazka = Convert.ToString(privyazka.get_ZN(n))
                     };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-                    //// Проверяем, совпадает ли сочетание с текущей записью из tmValues
-                    //if (!tmValuesSet.Contains(currentCombination))
-                    //{
-                    //    n = tableTIChannel.FindNextSel[n];
-                    //    continue;
-                    //}
-
-
-
-
-
-
-
-
-
-
-
-
                     // Проверяем, что запись ещё не добавлена
                     if (newValues.Any(v =>
                         v.IndexTM == currentCombination.IndexTM &&
