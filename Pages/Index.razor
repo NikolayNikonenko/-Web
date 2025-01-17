@@ -13,6 +13,7 @@
     private string PreparedDataPath { get; set; }
     private string ExperimentalDataPath { get; set; }
     private string ReportDataPath { get; set; }
+    private string EOTMDataPath { get; set; }
     private string IncorrectTMCorrelationRange { get; set; }
     private string QuestionableTMCorrelationRange { get; set; }
     private string ReliableTMCorrelationRange { get; set; }
@@ -27,6 +28,7 @@
     { "PreparedDataPath", "параметра: расположение для набора \"Подготовленные данные\"" },
     { "ExperimentalDataPath", "параметра: расположение для набора \"Экспериментальные данные\"" },
     { "ReportDataPath", "параметра: расположение для отчетов" },
+    { "EOTMDataPath", "параметра: расположение для файла содержащего номера ТМ, отключение которых с наибольшей вероятностью приводит к НОС" },
     { "IncorrectTMCorrelation", "параметра: Коэффициент корреляции некорректных ТМ" },
     { "QuestionableTMCorrelation", "параметра: Коэффициент корреляции сомнительных ТМ" },
     { "ReliableTMCorrelation", "параметра: Коэффициент корреляции достоверных ТМ" },
@@ -41,6 +43,7 @@
         PreparedDataPath = parameters.FirstOrDefault(p => p.parameter_name == "PreparedDataPath")?.parameter_value;
         ExperimentalDataPath = parameters.FirstOrDefault(p => p.parameter_name == "ExperimentalDataPath")?.parameter_value;
         ReportDataPath = parameters.FirstOrDefault(p => p.parameter_name == "ReportDataPath")?.parameter_value;
+        EOTMDataPath = parameters.FirstOrDefault(p => p.parameter_name == "EOTMDataPath")?.parameter_value;
 
         // Загрузка коэффициентов корреляции с диапазонами
         var incorrectTMCorrelation = parameters.FirstOrDefault(p => p.parameter_name == "IncorrectTMCorrelation")?.parameter_value;
@@ -80,6 +83,7 @@
         ValidateParameter("PreparedDataPath", PreparedDataPath);
         ValidateParameter("ExperimentalDataPath", ExperimentalDataPath);
         ValidateParameter("ReportDataPath", ReportDataPath);
+        ValidateParameter("EOTMDataPath", EOTMDataPath);
         ValidateParameter("IncorrectTMCorrelation", IncorrectTMCorrelationRange);
         ValidateParameter("QuestionableTMCorrelation", QuestionableTMCorrelationRange);
         ValidateParameter("ReliableTMCorrelation", ReliableTMCorrelationRange);
@@ -95,6 +99,7 @@
         await UpdateOrCreateParameter("PreparedDataPath", PreparedDataPath);
         await UpdateOrCreateParameter("ExperimentalDataPath", ExperimentalDataPath);
         await UpdateOrCreateParameter("ReportDataPath", ReportDataPath);
+        await UpdateOrCreateParameter("EOTMDataPath", EOTMDataPath);
         await UpdateOrCreateParameter("IncorrectTMCorrelation", IncorrectTMCorrelationRange);
         await UpdateOrCreateParameter("QuestionableTMCorrelation", QuestionableTMCorrelationRange);
         await UpdateOrCreateParameter("ReliableTMCorrelation", ReliableTMCorrelationRange);
@@ -124,7 +129,7 @@
     private void ValidateParameter(string parameterName, string parameterValue)
     {
         // Проверки путей
-        if (parameterName == "InputDataPath" || parameterName == "PreparedDataPath" || parameterName == "ExperimentalDataPath" || parameterName == "ReportDataPath")
+        if (parameterName == "InputDataPath" || parameterName == "PreparedDataPath" || parameterName == "ExperimentalDataPath" || parameterName == "ReportDataPath" || parameterName == "EOTMDataPath")
         {
             // Проверка на null
             if (string.IsNullOrEmpty(parameterValue))
@@ -138,7 +143,7 @@
                 validationErrors.Add($"Значение для {parameterLabels[parameterName]} должно быть в формате пути на диске.");
             }
 
-            if (!Directory.Exists(parameterValue))
+            if (!Directory.Exists(parameterValue) && !File.Exists(parameterValue))
             {
                 validationErrors.Add($"Путь: {parameterValue} для {parameterLabels[parameterName]} не существует.");
             }
@@ -207,6 +212,10 @@
 <div class="mb-3">
     <label>Расположение для набора папки для сохранения отчетов:</label>
     <input @bind="ReportDataPath" class="form-control" placeholder="C:\path\to\report\data" />
+</div>
+<div class="mb-3">
+    <label>Расположение для набора папки для csv файла хранящего номера ТИ, отключение которых с наибольшей вероятностью приводит к неуспешной ОС:</label>
+    <input @bind="EOTMDataPath" class="form-control" placeholder="C:\path\to\EOTM\data" />
 </div>
 <div class="mb-3">
     <label>Коэффициент корреляции некорректных ТМ (диапазон, например -1;-0.5):</label>

@@ -81,6 +81,7 @@ namespace перенос_бд_на_Web
                 Thread.Sleep(100);
 
                 var oc1 = rastr.opf("s");
+                Console.WriteLine($"Загружен файл {filePath}, Результат ОС - {Convert.ToString(oc1)}");
                 return (int)oc1 == 0;
             }
             catch (Exception ex)
@@ -150,60 +151,55 @@ namespace перенос_бд_на_Web
             return successfulState;
         }
 
-        public Dictionary<string, string> LoadDataFromExcel(string filePath)
+        public Dictionary<string, string> LoadDataFromCsv(string filePath)
         {
             var dataDictionary = new Dictionary<string, string>();
 
-            Application excelApp = new Application();
-            Workbook workBook = null;
-            Worksheet workSheet = null;
-
             try
             {
-                // Открываем Excel файл
-                workBook = excelApp.Workbooks.Open(filePath);
-                workSheet = workBook.Sheets[1]; // Работаем с первым листом
+                // Считываем строки из файла CSV
+                var lines = File.ReadAllLines(filePath);
 
-                // Указываем полный путь к Range из Excel
-                Microsoft.Office.Interop.Excel.Range usedRange = workSheet.UsedRange;
-
-                // Перебираем строки в диапазоне, начиная со второй (первая строка — заголовки)
-                for (int row = 2; row <= usedRange.Rows.Count; row++)
+                // Перебираем строки, начиная со второй (первая строка — заголовки)
+                for (int i = 1; i < lines.Length; i++)
                 {
-                    string key = usedRange.Cells[row, 1]?.Value2?.ToString(); // Столбец A
-                    string value = usedRange.Cells[row, 2]?.Value2?.ToString(); // Столбец B
+                    var values = lines[i].Split(';'); // Предполагается, что разделитель — запятая
 
-                    if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(value))
+                    if (values.Length >= 2)
                     {
-                        dataDictionary[key] = value;
+                        string key = values[0]?.Trim();  // Первый столбец
+                        string value = values[1]?.Trim(); // Второй столбец
+
+                        if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(value))
+                        {
+                            dataDictionary[key] = value;
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Ошибка при чтении Excel файла: {ex.Message}");
-            }
-            finally
-            {
-                // Освобождение ресурсов
-                if (workSheet != null) Marshal.ReleaseComObject(workSheet);
-                if (workBook != null)
-                {
-                    workBook.Close(false);
-                    Marshal.ReleaseComObject(workBook);
-                }
-                if (excelApp != null)
-                {
-                    excelApp.Quit();
-                    Marshal.ReleaseComObject(excelApp);
-                }
+                Console.WriteLine($"Ошибка при чтении CSV файла: {ex.Message}");
             }
 
             return dataDictionary;
         }
 
+        public string GetParameterValue(string parameterName, ApplicationContext context)
+        {
+            var parameter = context.configuration_parameters
+            .FirstOrDefault(p => p.parameter_name == parameterName);
+
+            if (parameter == null)
+            {
+                throw new Exception($"Параметр с именем {parameterName} не найден в таблице configuration_parameters");
+            }
+            return parameter.parameter_value;
+        }
+
 
         public async Task<(int successfulCount, int totalCount)> AnalyzeNewReliabilityData(
+           ApplicationContext context,
            DateTime startDateTime,
            DateTime endDateTime,
            List<string> filePaths,
@@ -215,11 +211,16 @@ namespace перенос_бд_на_Web
             int successfulCount = 0;
             int processedCount = 0;
 
+            // Путь к документу
+            string csvFilePath = GetParameterValue("EOTMDataPath", context);
 
-            // Путь к Excel документу
-            string excelFilePath = @"C:\Users\User\Desktop\учеба\магистратура\5 семак\диплом по ИТ\300 ТМ для отключения\300 ТМ для ЕОТМ.xlsx";
+            var tmDictionary = LoadDataFromCsv(csvFilePath);
 
-            var tmDictionary = LoadDataFromExcel(excelFilePath);
+            if (tmDictionary.Count == 0 || filePaths.Count == 0)
+            {
+                Console.WriteLine("Нет данных для обработки.");
+                return (successfulCount, totalCount);
+            }
 
             // Общее количество операций (файлы * записи в tmDictionary)
             totalCount = filePaths.Count * tmDictionary.Count;
@@ -240,10 +241,9 @@ namespace перенос_бд_на_Web
                             successfulCount++; // Увеличиваем счетчик успешных ОС
                         }
                         processedCount++;
-                        int progress = (processedCount * 100) / totalCount;
-                        progressCallback?.Invoke(progress);
+                        int progress = (int)(double)processedCount*100*2 / totalCount;
+                        progressCallback(progress);
                     }
-
                 }
 
             }

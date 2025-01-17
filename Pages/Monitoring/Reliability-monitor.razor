@@ -239,6 +239,7 @@
         {
             // Логика с использованием нового метода
             var result = await ReliabilityAnalyzer.AnalyzeNewReliabilityData(
+                _context,
                 startDateTime.Value,
                 endDateTime.Value,
                 filePaths,
