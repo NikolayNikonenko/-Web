@@ -76,6 +76,7 @@ namespace перенос_бд_на_Web
 
             builder.Services.AddScoped<ReportService>();
 
+            AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
             builder.Services.AddLogging();
             builder.Services.AddControllers();

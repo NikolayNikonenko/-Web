@@ -70,13 +70,13 @@ namespace перенос_бд_на_Web.Services
             _reportDataList.Add(data);
         }
 
-        public async Task SaveReportAsync()
+        public async Task SaveReportAsync(string filePath)
         {
             if (_reportDataList.Count == 0)
                 throw new InvalidOperationException("Нет данных для сохранения отчета.");
 
-            string filePath = Path.Combine("D:\\учеба\\магистратура\\3 курс\\диплом ит\\мое\\тест отчеты",
-                            $"Отчет_{DateTime.Now:yyyyMMdd_HHmmss}.docx");
+            //string filePath = Path.Combine("D:\\учеба\\магистратура\\3 курс\\диплом ит\\мое\\тест отчеты",
+            //                $"Отчет_{DateTime.Now:yyyyMMdd_HHmmss}.docx");
 
             using (WordprocessingDocument wordDoc = WordprocessingDocument.Create(filePath, WordprocessingDocumentType.Document))
             {

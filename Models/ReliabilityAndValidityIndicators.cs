@@ -15,5 +15,7 @@ namespace перенос_бд_на_Web.Models
         public double avg_mo { get; set; }
         public double sko { get; set; }
         public Guid id_report { get; set; }
+        public string set_name { get; set; }
+        public double success_rate { get; set; }
     }
 }

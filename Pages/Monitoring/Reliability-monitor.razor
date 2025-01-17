@@ -61,8 +61,18 @@
     private int firstSetProgress = 0;
     private int secondSetProgress = 0;
 
+    private string _rootSaveReportDirectory;
+
+
+    private  ApplicationContext _context;
+    private Guid reportId; // Хранение ID отчёта
+    public string savePath;
+
+
+
     protected override async Task OnInitializedAsync()
     {
+        _context = ContextFactory.CreateDbContext();
         await using var context = ContextFactory.CreateDbContext();
         // Загружаем уникальные значения из колонки experiment_label
         uniqueExperimentLabels = await context.slices
@@ -72,6 +82,12 @@
 
         firstSelectedSet = uniqueExperimentLabels.FirstOrDefault();
         secondSelectedSet = uniqueExperimentLabels.Skip(1).FirstOrDefault();
+
+        _rootSaveReportDirectory = GetParameterValue("ReportDataPath");
+
+        savePath = Path.Combine(_rootSaveReportDirectory,
+                                $"Отчет_{DateTime.Now:yyyyMMdd_HHmm}.docx");
+        var reportId = await SaveRepotToDatabase(_context);
     }
 
 
@@ -86,6 +102,19 @@
             await DrawChart();
             isChartReady = false; // Сбрасываем флаг
         }
+    }
+
+
+    private string GetParameterValue(string parameterName)
+    {
+        var parameter = _context.configuration_parameters
+        .FirstOrDefault(p => p.parameter_name == parameterName);
+
+        if (parameter == null)
+        {
+            throw new Exception($"Параметр с именем {parameterName} не найден в таблице configuration_parameters");
+        }
+        return parameter.parameter_value;
     }
 
     private async Task ProcessReliabilityData(bool useNewLogic)
@@ -322,37 +351,175 @@
 
     private async Task AddToReport()
     {
-        // Проверка наличия данных перед вызовом сервиса
-        if (firstSetResults.totalCount > 0 && secondSetResults.totalCount > 0)
+        //await using var context = ContextFactory.CreateDbContext();
+        //await using var transaction = await _context.Database.BeginTransactionAsync(); // Начало транзакции
+        try
         {
-            await ReportService.AddToReport(
-            firstSelectedSet, secondSelectedSet,
-            firstMaxActivePowerImbalance, secondMaxActivePowerImbalance,
-            firstMaxReactivePowerImbalance, secondMaxReactivePowerImbalance,
-            firstAverageTotalActivePowerImbalance, secondAverageTotalActivePowerImbalance,
-            firstAverageTotalReactivePowerImbalance, secondAverageTotalReactivePowerImbalance,
-            firstAverageDeviation, secondAverageDeviation,
-            firstStandardDeviation, secondStandardDeviation,
-            GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount),
-            GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount),
-            startDateTime, endDateTime
-            );
+            // Проверка наличия данных перед вызовом сервиса
+            if (firstSetResults.totalCount > 0 && secondSetResults.totalCount > 0)
+            {
+                await ReportService.AddToReport(
+                firstSelectedSet, secondSelectedSet,
+                firstMaxActivePowerImbalance, secondMaxActivePowerImbalance,
+                firstMaxReactivePowerImbalance, secondMaxReactivePowerImbalance,
+                firstAverageTotalActivePowerImbalance, secondAverageTotalActivePowerImbalance,
+                firstAverageTotalReactivePowerImbalance, secondAverageTotalReactivePowerImbalance,
+                firstAverageDeviation, secondAverageDeviation,
+                firstStandardDeviation, secondStandardDeviation,
+                GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount),
+                GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount),
+                startDateTime, endDateTime
+                );
+            }
+            // Устанавливаем флаг, что данные добавлены
+            isDataAddedToReport = true;
+
+            //savePath = Path.Combine("D:\\учеба\\магистратура\\3 курс\\диплом ит\\мое\\тест отчеты",
+            //$"Отчет_{DateTime.Now:yyyyMMdd_HHmm}.docx");
+
+            // Создаём запись отчёта только один раз
+            if (reportId == Guid.Empty)
+            {
+                reportId = await SaveRepotToDatabase(_context);
+                //await SaveIdReportToWxperiment(reportId);
+
+
+            }
+            await GetReportFormat(reportId, _context);
+
         }
-        // Устанавливаем флаг, что данные добавлены
-        isDataAddedToReport = true;
+        catch (Exception ex)
+        {
+            //await transaction.RollbackAsync(); // Откат транзакции в случае ошибки
+            Console.WriteLine($"Ошибка при добавлении в отчёт: {ex.Message}");
+            throw; // Проброс ошибки
+
+        }
     }
 
-    private async Task SaveReport()
+    private async Task SaveIdReportToExperiment(Guid reportId, List<(string setName, int countNos, int totalNumberOfOS, double maxNebP, double maxNebQ, double avgNebP, double
+            avgNebQ, double avgMo, double sko, double successRate)> setsData)
     {
+        // Получаем список всех экспериментов из базы данных
+        var experiments = await _context.experiment.ToListAsync();
+
+        foreach (var set in setsData)
+        {
+            // Находим эксперименты, у которых experiment_label совпадает с setName
+            var matchingExperiments = experiments.Where(e => e.experiment_label == set.setName).ToList();
+
+            foreach (var experiment in matchingExperiments)
+            {
+                experiment.id_report = reportId;
+            }
+        }
+        // Сохраняем изменения в базе данных
+        await _context.SaveChangesAsync();
+
+    }
+
+
+    private async Task GetReportFormat(Guid reportId, ApplicationContext _context)
+    {
+        var setsData = new List<(string setName, int countNos, int totalNumberOfOS, double maxNebP, double maxNebQ, double avgNebP, double avgNebQ, double avgMo, double sko, double successRate)>
+        {
+            (
+                firstSelectedSet,
+                firstSetResults.successfulCount,
+                firstSetResults.totalCount,
+                firstMaxActivePowerImbalance,
+                firstMaxReactivePowerImbalance,
+                firstAverageTotalActivePowerImbalance,
+                firstAverageTotalReactivePowerImbalance,
+                firstAverageDeviation,
+                firstStandardDeviation,
+                GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount)
+            ),
+            (
+                secondSelectedSet,
+                secondSetResults.successfulCount,
+                secondSetResults.totalCount,
+                secondMaxActivePowerImbalance,
+                secondMaxReactivePowerImbalance,
+                secondAverageTotalActivePowerImbalance,
+                secondAverageTotalReactivePowerImbalance,
+                secondAverageDeviation,
+                secondStandardDeviation,
+                GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount)
+            )
+        };
+
+        await SaveReliabilityAndValidityIndicators(reportId, setsData, _context);
+        await SaveIdReportToExperiment(reportId, setsData);
+    }
+    private async Task<Guid> SaveRepotToDatabase(ApplicationContext _context)
+    {
+        // Проверяем, существует ли уже отчёт с указанным путём
+        var existingReport = await _context.report
+            .FirstOrDefaultAsync(r => r.report_path == savePath);
+
+        if (existingReport != null)
+        {
+            // Возвращаем ID существующего отчёта
+            return existingReport.id_report;
+        }
+
+        //await using var context = ContextFactory.CreateDbContext();
+        var newReport = new Report
+        {
+            id_report = Guid.NewGuid(),
+            report_date = DateTime.Now,
+            report_path = savePath
+        };
+        _context.report.Add(newReport);
+        await _context.SaveChangesAsync();
+        return newReport.id_report;
+    }
+
+
+    private async Task SaveReliabilityAndValidityIndicators(Guid reportId, 
+        List<(string setName, int countNos, int totalNumberOfOS, double maxNebP, double maxNebQ, double avgNebP, double 
+            avgNebQ, double avgMo, double sko, double successRate)> setsData, ApplicationContext _context)
+    {
+        foreach (var set in setsData)
+        {
+            // Распаковка данных набора
+            //var (setName, countNos, totalNumberOfOS, maxNebP, maxNebQ, avgNebP, avgNebQ, avgMo, sko, successRate) = setData;
+
+            var newReliabilityAndValidityIndicators = new ReliabilityAndValidityIndicators
+            {
+                id_indicator = Guid.NewGuid(),
+                id_report = reportId,
+                set_name = set.setName,
+                count_nos = set.countNos,
+                total_number_of_os = set.totalNumberOfOS,
+                max_neb_p = set.maxNebP,
+                max_neb_q = set.maxNebQ,
+                avg_neb_p = set.avgNebP,
+                avg_neb_q = set.avgNebQ,
+                avg_mo = set.avgMo,
+                sko = set.sko,
+                success_rate = set.successRate
+            };
+            _context.reliability_and_validity_indicators.Add(newReliabilityAndValidityIndicators);
+        }
+        await _context.SaveChangesAsync();
+    }
+
+    private async Task SaveReport(string savePath)
+    {
+
         try
         {
             // Вызов метода для сохранения отчета
-            await ReportService.SaveReportAsync();
+            await ReportService.SaveReportAsync(savePath);
+            Console.WriteLine("Отчет успешно сохранен!");
         }
         catch (Exception ex)
         {
             // Логирование ошибки
             Console.WriteLine($"Ошибка при сохранении отчета: {ex.Message}");
+            //throw; // Проброс ошибки для отката транзакции
         }
     }
 
@@ -524,7 +691,7 @@
         @if (isDataAddedToReport)
         {
             <div class="mt-4 mb-4">
-                <button class="btn btn-primary" @onclick="SaveReport">
+                <button class="btn btn-primary" @onclick="() => SaveReport(savePath)">
                     Сформировать и сохранить отчет
                 </button>
             </div>

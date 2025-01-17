@@ -21,6 +21,8 @@ namespace перенос_бд_на_Web.Services
         private readonly IRastr _rastr;
         private readonly string _fullSaveDirectory;
         private readonly IServiceScopeFactory _scopeFactory;
+        private DateTime _strartDate;
+        private DateTime _endDate;
 
 
         public ActionService(ISliceService sliceService, IServiceScopeFactory scopeFactory)
@@ -83,11 +85,20 @@ namespace перенос_бд_на_Web.Services
                 experimentalKit
                 );
 
+                _strartDate = actions.Min(a => a.StartDate);
+                _endDate = actions.Max(a => a.EndDate);
+
                 // Всего операций: обработка файлов + расчет корреляции
                 int totalOperations = filePathsInRange.Count;
                 int completedOperations = 0;
 
                 int orderIndex = 0;
+
+
+                var experimentId=await SaveExperiment(applyFGO, experimentLabel, context);
+
+                await SaveValidatedTelemetry(context, experimentId, actions);
+
 
                 foreach (var path in filePathsInRange)
                 {
@@ -236,6 +247,7 @@ namespace перенос_бд_на_Web.Services
                         // Сохраняем модифицированные значения reactive_power_imbalance
 
                         await SaveReactivePowerImbalanceAsync(_rastr, experimentFileId, (int)orderIndex, experimentLabel, context);
+
                     }
 
                     // Подтверждаем транзакцию
@@ -307,6 +319,46 @@ namespace перенос_бд_на_Web.Services
 
             return sliceRecord.SliceID;
         }
+
+        private async Task<Guid> SaveExperiment(bool applyFGO, string experimentLabel, ApplicationContext context)
+        {
+
+            var newExpwriment = new Experiment
+            {
+                id_experiment = Guid.NewGuid(),
+                date_experiment = DateTime.Now,
+                start_date_experiment_interval = _strartDate,
+                end_date_experiment_interval = _endDate,
+                apply_fgo = applyFGO,
+                experiment_label = experimentLabel
+            };
+            context.experiment.Add(newExpwriment);
+            await context.SaveChangesAsync();
+            Console.WriteLine($"Эксперимент: {experimentLabel} сохранен в таблицу экспериментов");
+            return newExpwriment.id_experiment;
+        }
+
+        private async Task SaveValidatedTelemetry(ApplicationContext context, Guid experimentId, List<VerificationAction> actions)
+        {
+
+            if (actions != null && actions.Any())
+            {
+                foreach (var action in actions)
+                {
+                    var newValidatedTelemetry = new ValidatedTelemetry
+                    {
+                        id_validated_telemetry = Guid.NewGuid(),
+                        id_experiment = experimentId,
+                        index_tm = action.TelemetryId,
+                        recomended_action = action.ActionName
+                    };
+                    context.validated_telemetry.Add(newValidatedTelemetry);
+                }
+                // Сохраняем изменения в базе данных
+                await context.SaveChangesAsync();
+            }
+        }
+
 
         // Метод для заполнения таблицы ModifiedTMValues
         private async Task SaveModifiedTMValues(
