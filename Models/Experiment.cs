@@ -13,6 +13,7 @@ namespace перенос_бд_на_Web.Models
         public DateTime start_date_experiment_interval { get; set; }
         public DateTime end_date_experiment_interval { get; set; }
 
-
+        // Связь один ко многим
+        public ICollection<ValidatedTelemetry> ValidatedTelemetries { get; set; }
     }
 }

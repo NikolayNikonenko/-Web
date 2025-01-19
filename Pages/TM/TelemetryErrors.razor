@@ -104,6 +104,11 @@
 
     private bool isIntervalApplied = false;
 
+    private bool showExperimentForm = false;
+    private List<ExperimentViewModel> experimentData;
+
+
+
     protected override async Task OnInitializedAsync()
     {
         isLoading = true; // Устанавливаем флаг в true перед началом загрузки
@@ -133,8 +138,8 @@
                 .ToList();
 
             // Создаем список доступных значений, включая "Входные данные"
-            availableValues = new List<string> { "Входные данные" };
-            availableValues.AddRange(availableExperiments);
+            //availableValues = new List<string> { "Входные данные" };
+            // availableValues.AddRange(availableExperiments);
 
             // Показываем выпадающий список только если есть эксперименты
             IsDropdownVisible = availableExperiments.Any();
@@ -731,10 +736,13 @@
     private async Task RefreshDataAfterExperiment()
     {
         availableValues = await _context.telemetry_values
-            .Where(tm => !tm.experiment_label.StartsWith("Подготовленные"))
+            .Where(tm =>
+                !tm.experiment_label.StartsWith("Подготовленные") &&
+                !tm.experiment_label.StartsWith("Входные"))
             .Select(tm => tm.experiment_label)
             .Distinct()
             .ToListAsync();
+
         availableExperiments = availableValues;
 
         // Принудительно обновляем интерфейс
@@ -1246,7 +1254,7 @@
 <!-- Кнопка для показа выбранных действий -->
 @if (selectedActions.Any())
 {
-    <button class="btn btn-primary mt-2 mb-2" @onclick="ToggleSelectedActions">Показать выбранные действия</button>
+    <button class="btn btn-primary mt-2 mb-2 me-2" @onclick="ToggleSelectedActions">Показать выбранные действия</button>
 }
 
 @if (showModal)
@@ -1563,6 +1571,115 @@
         return action?.ActionName ?? string.Empty;
     }
 
+    private async Task ToggleExperimentForm()
+    {
+        showExperimentForm = !showExperimentForm;
+        if (showExperimentForm && experimentData == null)
+        {
+            await LoadExperimentData();
+            StateHasChanged(); // Уведомляем Blazor об изменении состояния
+        }
+    }
+
+    private async Task LoadExperimentData()
+    {
+        var experiments = await _context.experiment
+     .Include(e => e.ValidatedTelemetries) // Загрузка связанных данных
+     .OrderBy(e => e.id_experiment)
+     .ToListAsync();
+
+        // Инициализируем список для отображения данных
+        experimentData = new List<ExperimentViewModel>();
+
+        foreach (var experiment in experiments)
+        {
+            // Проходимся по каждому телеизмерению, связанному с текущим экспериментом
+            foreach (var valTm in experiment.ValidatedTelemetries)
+            {
+                experimentData.Add(new ExperimentViewModel
+                    {
+                        ExperimentNumber = experiment.experiment_label,
+                        DateExperiment = experiment.date_experiment, // Приведение даты к строке
+                        CalculationInterval = $"от {experiment.start_date_experiment_interval} до {experiment.end_date_experiment_interval}",
+                        ApplyFGO = experiment.apply_fgo,
+                        TelemetryNumber = valTm.index_tm,
+                        RecommendedAction = valTm.recomended_action
+                    });
+            }
+        }
+        Console.WriteLine($"Данные загружены: {experimentData.Count} записей.");
+    }
+
+    private void CloseExperimentForm()
+    {
+        showExperimentForm = false;
+    }
+
+}
+
+@if (availableExperiments.Any() )
+{
+    <button class="btn btn-primary mt-2 mb-2" @onclick="ToggleExperimentForm">Проведенные эксперименты</button>
+}
+
+@if (showExperimentForm)
+{
+    <div class="alert alert-info mt-3 position-relative">
+        <h4>Проведенные эксперименты</h4>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Номер эксперимента</th>
+                    <th>Дата проведения эксперимента</th>
+                    <th>Расчетный интервал</th>
+                    <th>Использование ФГО</th>
+                    <th>Номер телеизмерения</th>
+                    <th>Действие по достоверизации</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (experimentData == null)
+                {
+                    <tr>
+                        <td colspan="5">Данные загружаются...</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var group in experimentData.GroupBy(e => e.ExperimentNumber))
+                    {
+                        <tr>
+                            <!-- Отображаем информацию об эксперименте -->
+                            <td>@group.Key</td>
+                            <td>@group.First().DateExperiment</td>
+                            <td>@group.First().CalculationInterval</td>
+                            <td>@(group.First().ApplyFGO ? "Да" : "Нет")</td>
+
+                            <!-- Объединяем связанные телеизмерения в одну ячейку -->
+                            <td>
+                                @foreach (var telemetry in group)
+                                {
+                                    <div>@telemetry.TelemetryNumber</div>
+                                }
+                            </td>
+
+                            <!-- Объединяем действия по достоверизации в одну ячейку -->
+                            <td>
+                                @foreach (var action in group)
+                                {
+                                    <div>@action.RecommendedAction</div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+        <!-- Кнопка Закрыть -->
+        <div style="position: absolute; bottom: 10px; right: 10px;">
+            <button class="btn btn-secondary" @onclick="CloseExperimentForm">Закрыть</button>
+        </div>
+    </div>
 }
 
 @if (CurrentUserMessage != null)
@@ -1582,6 +1699,7 @@
             {
                 <option value="@experiment">@experiment</option>
             }
+            
         </select>
     </div>
 }

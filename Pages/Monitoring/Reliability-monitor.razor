@@ -359,6 +359,31 @@
             // Проверка наличия данных перед вызовом сервиса
             if (firstSetResults.totalCount > 0 && secondSetResults.totalCount > 0)
             {
+                // Получаем список экспериментов, связанных с firstSelectedSet и secondSelectedSet
+                var experiments = await _context.experiment
+                    .Include(e => e.ValidatedTelemetries) // Загрузка связанных телеизмерений
+                    .Where(e => e.experiment_label == firstSelectedSet || e.experiment_label == secondSelectedSet) // Фильтр по меткам
+                    .OrderBy(e => e.id_experiment)
+                    .ToListAsync();
+
+                // Формируем данные об экспериментах для отчета
+                var experimentData = new List<ExperimentViewModel>();
+                foreach (var experiment in experiments)
+                {
+                    foreach (var valTm in experiment.ValidatedTelemetries)
+                    {
+                        experimentData.Add(new ExperimentViewModel
+                            {
+                                ExperimentNumber = experiment.experiment_label,
+                                DateExperiment = experiment.date_experiment,
+                                CalculationInterval = $"от {experiment.start_date_experiment_interval} до {experiment.end_date_experiment_interval}",
+                                ApplyFGO = experiment.apply_fgo,
+                                TelemetryNumber = valTm.index_tm,
+                                RecommendedAction = valTm.recomended_action
+                            });
+                    }
+                }
+
                 await ReportService.AddToReport(
                 firstSelectedSet, secondSelectedSet,
                 firstMaxActivePowerImbalance, secondMaxActivePowerImbalance,
@@ -369,7 +394,8 @@
                 firstStandardDeviation, secondStandardDeviation,
                 GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount),
                 GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount),
-                startDateTime, endDateTime
+                startDateTime, endDateTime,
+                experimentData
                 );
             }
             // Устанавливаем флаг, что данные добавлены

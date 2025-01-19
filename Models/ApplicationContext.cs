@@ -21,11 +21,19 @@ namespace перенос_бд_на_Web.Models
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<ValidatedTelemetry>()
+        .HasOne(v => v.Experiment) // Навигационное свойство
+        .WithMany(e => e.ValidatedTelemetries) // Коллекция навигации в Experiment
+        .HasForeignKey(v => v.id_experiment) // Укажите внешний ключ
+        .HasConstraintName("validated_telemetry_id_experiment_fkey"); // Укажите имя внешнего ключа, если нужно
+
             modelBuilder.Entity<CalculationIntervalForPTI>(entity =>
             {
                 entity.HasNoKey(); // Указываем, что таблица не имеет первичного ключа
                 entity.ToTable("calculationIntervalForPTIs"); // Если нужно привязать к таблице/представлению
             });
+
+
         }
         public ApplicationContext(DbContextOptions<ApplicationContext> options) : base(options) 
         { 
