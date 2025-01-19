@@ -107,6 +107,10 @@
     private bool showExperimentForm = false;
     private List<ExperimentViewModel> experimentData;
 
+    private string currentExperimentSortColumn;
+
+    private bool isExperimentSortAscending = true;
+
 
 
     protected override async Task OnInitializedAsync()
@@ -138,8 +142,8 @@
                 .ToList();
 
             // Создаем список доступных значений, включая "Входные данные"
-            //availableValues = new List<string> { "Входные данные" };
-            // availableValues.AddRange(availableExperiments);
+            availableValues = new List<string> { "Входные данные" };
+            availableValues.AddRange(availableExperiments);
 
             // Показываем выпадающий список только если есть эксперименты
             IsDropdownVisible = availableExperiments.Any();
@@ -173,12 +177,27 @@
             nameof(NedostovernayaTM.IndexTm) => isAscending ? filteredTm.OrderBy(t => t.IndexTm).ToList() : filteredTm.OrderByDescending(t => t.IndexTm).ToList(),
             nameof(NedostovernayaTM.Id1) => isAscending ? filteredTm.OrderBy(t => t.Id1).ToList() : filteredTm.OrderByDescending(t => t.Id1).ToList(),
             nameof(NedostovernayaTM.CorrTm) => isAscending ? filteredTm.OrderBy(t => t.CorrTm).ToList() : filteredTm.OrderByDescending(t => t.CorrTm).ToList(),
-            nameof(NedostovernayaTM.Status) => isAscending ? filteredTm.OrderBy(t => t.Status).ToList() : filteredTm.OrderByDescending(t => t.Status).ToList(),
+            nameof(NedostovernayaTM.Status) => isAscending
+            ? filteredTm.OrderBy(t => GetStatusPriority(t.Status)).ToList()
+            : filteredTm.OrderByDescending(t => GetStatusPriority(t.Status)).ToList(),
             nameof(NedostovernayaTM.MaxLagranj) => isAscending ? filteredTm.OrderBy(t => t.MaxLagranj).ToList() : filteredTm.OrderByDescending(t => t.MaxLagranj).ToList(),
             nameof(NedostovernayaTM.AvgLagranj) => isAscending ? filteredTm.OrderBy(t => t.AvgLagranj).ToList() : filteredTm.OrderByDescending(t => t.AvgLagranj).ToList(),
             _ => filteredTm
         };
     }
+
+    // Вспомогательный метод для определения приоритета статуса
+    private int GetStatusPriority(string status)
+    {
+        return status switch
+        {
+            "Недостоверная" => 1,
+            "Сомнительная" => 2,
+            "Достоверная" => 3,
+            _ => 4 // Если есть неучтённые значения
+        };
+    }
+
 
     private async Task SearchData()
     {
@@ -849,9 +868,9 @@
 {
     <div class="mb-3">
         <label>Начало временного промежутка:</label>
-        <input type="datetime-local" @bind="startDate" class="form-control" />
+        <input type="datetime-local" @bind="startDate" class="form-control" style= "width: 300px;" />
         <label>Конец временного промежутка:</label>
-        <input type="datetime-local" @bind="endDate" class="form-control" />
+        <input type="datetime-local" @bind="endDate" class="form-control" style="width: 300px;" />
 
         <div class="form-check mb-3">
             <input type="checkbox" id="enableThinning" class="form-check-input" @bind="isThinningEnabled" />
@@ -862,7 +881,7 @@
         {
             <div class="mb-3">
                 <label>Интервал прореживания:</label>
-                <input type="number" @bind="pruningInterval" min="1" class="form-control" />
+                <input type="number" @bind="pruningInterval" min="1" class="form-control" style="width: 80px;" />
             </div>
         }
 
@@ -1203,6 +1222,38 @@
             errorMessage = string.Empty; // Сбрасываем сообщение об ошибке, если всё корректно
         }
     }
+
+    private void SortExperimentData(string column)
+    {
+        if (currentExperimentSortColumn == column)
+        {
+            // Переключить направление сортировки
+            isExperimentSortAscending = !isExperimentSortAscending;
+        }
+        else
+        {
+            // Установить новую колонку для сортировки
+            currentExperimentSortColumn = column;
+            isExperimentSortAscending = true;
+        }
+
+        // Сортировка experimentData
+        if (experimentData != null)
+        {
+            if (isExperimentSortAscending)
+            {
+                experimentData = experimentData.OrderBy(e => GetPropertyValue(e, column)).ToList();
+            }
+            else
+            {
+                experimentData = experimentData.OrderByDescending(e => GetPropertyValue(e, column)).ToList();
+            }
+        }
+    }
+    private static object GetPropertyValue(object obj, string propertyName)
+    {
+        return obj.GetType().GetProperty(propertyName)?.GetValue(obj, null);
+    }
 }
 
 
@@ -1266,7 +1317,7 @@
         <!-- Фильтр по экспериментам -->
         <div class="form-group">
             <label for="experimentSelect">Выбрать набор для применения изменений:</label>
-            <select id="experimentSelect" class="form-select" @onchange="HandleExperimentChange">
+            <select id="experimentSelect" class="form-select" @onchange="HandleExperimentChange" style="width: 300px;">
                 @foreach (var experiment in availableValues)
                 {
                     <option value="@experiment">@experiment</option>
@@ -1624,17 +1675,29 @@
 
 @if (showExperimentForm)
 {
-    <div class="alert alert-info mt-3 position-relative">
+    <div class="alert alert-info mt-3 position-relative" style="padding-bottom: 40px; height: auto; min-height: 300px;">
         <h4>Проведенные эксперименты</h4>
         <table class="table table-striped">
             <thead>
                 <tr>
-                    <th>Номер эксперимента</th>
-                    <th>Дата проведения эксперимента</th>
-                    <th>Расчетный интервал</th>
-                    <th>Использование ФГО</th>
-                    <th>Номер телеизмерения</th>
-                    <th>Действие по достоверизации</th>
+                    <th @onclick="() => SortExperimentData(nameof(ExperimentViewModel.ExperimentNumber))" style="cursor: pointer;">
+                        Номер эксперимента @(currentExperimentSortColumn == nameof(ExperimentViewModel.ExperimentNumber) ? (isExperimentSortAscending ? "▲" : "▼") : "")
+                    </th>
+                    <th @onclick="() => SortExperimentData(nameof(ExperimentViewModel.DateExperiment))" style="cursor: pointer;">
+                        Дата проведения эксперимента @(currentExperimentSortColumn == nameof(ExperimentViewModel.DateExperiment) ? (isExperimentSortAscending ? "▲" : "▼") : "")
+                    </th>
+                    <th @onclick="() => SortExperimentData(nameof(ExperimentViewModel.CalculationInterval))" style="cursor: pointer;">
+                        Расчетный интервал @(currentExperimentSortColumn == nameof(ExperimentViewModel.CalculationInterval) ? (isExperimentSortAscending ? "▲" : "▼") : "")
+                    </th>
+                    <th @onclick="() => SortExperimentData(nameof(ExperimentViewModel.ApplyFGO))" style="cursor: pointer;">
+                        Использование ФГО @(currentExperimentSortColumn == nameof(ExperimentViewModel.ApplyFGO) ? (isExperimentSortAscending ? "▲" : "▼") : "")
+                    </th>
+                    <th>
+                        Номер телеизмерения
+                    </th>
+                    <th>
+                        Действие по достоверизации
+                    </th>
                 </tr>
             </thead>
             <tbody>
@@ -1676,7 +1739,7 @@
             </tbody>
         </table>
         <!-- Кнопка Закрыть -->
-        <div style="position: absolute; bottom: 10px; right: 10px;">
+        <div style="position: absolute; bottom: 5px; right: 10px;">
             <button class="btn btn-secondary" @onclick="CloseExperimentForm">Закрыть</button>
         </div>
     </div>
@@ -1693,7 +1756,7 @@
 {
     <div class="form-group">
         <label for="experimentSelect">Выберите эксперимент:</label>
-        <select id="experimentSelect" class="form-select" @onchange="FilterByExperiment">
+        <select id="experimentSelect" class="form-select" @onchange="FilterByExperiment" style="width: 200px;">
             <option value="" selected>Входные данные</option>
             @foreach (var experiment in availableExperiments)
             {
