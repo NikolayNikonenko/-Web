@@ -1767,14 +1767,22 @@
     </div>
 }
 
+@* @if (lastInterval != null && hasPreparedData)
+{
+    <p style="margin-top: 20px;">
+        <b>ПТИ и ДТИ рассчитаны для интервала:</b>
+        от: <span>@lastInterval.startDate.ToString("dd.MM.yy HH:mm:ss")</span>
+        до: <span>@lastInterval.endDate.ToString("dd.MM.yy HH:mm:ss")</span>
+    </p>
+} *@
 
-    @if (isLoading)
-    {
-        <div class="loading-indicator">
-            <div class="spinner-border"></div>
-            <p>@loadingMessage</p> <!-- Текст сообщения меняется динамически -->
-        </div>
-    }
+@if (isLoading)
+{
+    <div class="loading-indicator">
+        <div class="spinner-border"></div>
+        <p>@loadingMessage</p> <!-- Текст сообщения меняется динамически -->
+    </div>
+}
 
 else if (filteredTm == null || !filteredTm.Any())
 {

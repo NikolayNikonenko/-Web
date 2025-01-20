@@ -71,9 +71,15 @@
     public string savePath;
 
     private bool ShowReportForm = false;
-    private List<ReportModel> Reports = new();
+    private List<ReportWithIndicatorsViewModel> Reports = new();
 
     private bool IsFormVisible = false;
+
+
+    private ReportWithIndicatorsViewModel? SelectedReportWithIndicators;
+    private Dictionary<string, List<ReliabilityAndValidityIndicators>>? GroupedIndicators;
+
+    private bool isLoadedReport;
 
 
     protected override async Task OnInitializedAsync()
@@ -82,9 +88,9 @@
         Reports = await ExistingReportService.GetAllReportsAsync();
 
         _context = ContextFactory.CreateDbContext();
-        await using var context = ContextFactory.CreateDbContext();
+        //await using var context = ContextFactory.CreateDbContext();
         // Загружаем уникальные значения из колонки experiment_label
-        uniqueExperimentLabels = await context.slices
+        uniqueExperimentLabels = await _context.slices
             .Select(s => s.experiment_label)
             .Distinct()
             .ToListAsync();
@@ -96,7 +102,6 @@
 
         savePath = Path.Combine(_rootSaveReportDirectory,
                                 $"Отчет_{DateTime.Now:yyyyMMdd_HHmm}.docx");
-        var reportId = await SaveRepotToDatabase(_context);
 
     }
 
@@ -567,22 +572,59 @@
 
     private async Task LoadReport(Guid reportId)
     {
-        try
-        {
-            var report = await ExistingReportService.LoadReportAsync(reportId);
-            // Реализуйте логику отображения или загрузки отчета
-            Console.WriteLine($"Report loaded: {report.id_report}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error loading report: {ex.Message}");
-        }
+        isProcessing = true; // Если используется флаг для блокировки UI
+        isLoadedReport = true; // Отмечаем, что идет загрузка существующего отчета
+        SelectedReportWithIndicators = await ExistingReportService.LoadReportAsync(reportId);
+
+        // Определяем имена наборов для диаграмм
+        var firstSetName = SelectedReportWithIndicators.Indicators.First().set_name;
+        var secondSetName = SelectedReportWithIndicators.Indicators
+            .FirstOrDefault(i => i.set_name != firstSetName)?.set_name;
+
+        // Заполняем результаты для диаграмм с использованием кортежей
+        firstSetResults = (
+            successfulCount: SelectedReportWithIndicators.Indicators
+                .FirstOrDefault(i => i.set_name == firstSetName)?.count_nos ?? 0,
+            totalCount: SelectedReportWithIndicators.Indicators
+                .FirstOrDefault(i => i.set_name == firstSetName)?.total_number_of_os ?? 1
+        );
+
+        secondSetResults = secondSetName != null ? (
+            successfulCount: SelectedReportWithIndicators.Indicators
+                .FirstOrDefault(i => i.set_name == secondSetName)?.count_nos ?? 0,
+            totalCount: SelectedReportWithIndicators.Indicators
+                .FirstOrDefault(i => i.set_name == secondSetName)?.total_number_of_os ?? 1
+        ) : (0, 0);
+
+
+
+        StateHasChanged(); // Обновление интерфейса
+        await Task.Delay(100); // Ждем завершения рендера
+        await DrawChart();
+        isProcessing = false; // Снятие блокировки UI
     }
 
     private void CloseForm()
     {
         IsFormVisible = false;
     }
+
+
+    private object GetIndicatorValue(ReliabilityAndValidityIndicators indicator, string indicatorName)
+    {
+        return indicatorName switch
+        {
+            "Максимальный небаланс по активной мощности" => Math.Round(indicator.max_neb_p, 3),
+            "Максимальный небаланс по реактивной мощности" => Math.Round(indicator.max_neb_q, 3),
+            "Усредненный суммарный небаланс по активной мощности" => Math.Round(indicator.avg_neb_p, 3),
+            "Усредненный суммарный небаланс по реактивной мощности" => Math.Round(indicator.avg_neb_q, 3),
+            "Среднее математическое ожидание" => Math.Round(indicator.avg_mo, 3),
+            "Среднеквадратичное отклонение" => Math.Round(indicator.sko, 3),
+            "Успешность" => Math.Round(indicator.success_rate, 3),
+            _ => "N/A"
+        };
+    }
+
 
 }
 
@@ -650,7 +692,7 @@
             {
                 <li class="mb-2">
                     @report.ReportDate
-                    <button class="btn btn-primary ms-2" @onclick="() => ExistingReportService.LoadReportAsync(report.Id)">Загрузить отчет</button>
+                    <button class="btn btn-primary ms-2" @onclick="() => LoadReport(report.Id)">Загрузить отчет</button>
                 </li>
             }
         </ol>
@@ -685,7 +727,134 @@
     </div>
 }
 
-@if (firstSetResults.totalCount > 0 && secondSetResults.totalCount > 0)
+
+
+
+@if (isLoadedReport && SelectedReportWithIndicators != null && SelectedReportWithIndicators.Indicators.Any())
+{
+    var firstSetName = SelectedReportWithIndicators.Indicators.First().set_name;
+    var secondSetName = SelectedReportWithIndicators.Indicators
+        .FirstOrDefault(i => i.set_name != firstSetName)?.set_name;
+
+    // Подготовка результатов
+    var firstSetResults = new
+    {
+        successfulCount = SelectedReportWithIndicators.Indicators.FirstOrDefault(i => i.set_name == firstSetName)?.count_nos ?? 0,
+        totalCount = SelectedReportWithIndicators.Indicators.FirstOrDefault(i => i.set_name == firstSetName)?.total_number_of_os ?? 1
+    };
+
+    var secondSetResults = secondSetName != null ? new
+    {
+        successfulCount = SelectedReportWithIndicators.Indicators.FirstOrDefault(i => i.set_name == secondSetName)?.count_nos ?? 0,
+        totalCount = SelectedReportWithIndicators.Indicators.FirstOrDefault(i => i.set_name == secondSetName)?.total_number_of_os ?? 1
+    } : null;
+
+    <div class="mt-4 text-center">
+        <h5>Отчет от @SelectedReportWithIndicators.ReportDate</h5>
+
+        <!-- Графики успешности ОС -->
+        <div class="row justify-content-center">
+            <!-- Первый график -->
+            <div class="col-md-6">
+                <h6>@firstSetName</h6>
+                <div class="chart-container">
+                    <canvas @ref="chartFirstSetRef"></canvas>
+                </div>
+                <p>Успешность ОС: @GetSuccessRate(firstSetResults.successfulCount, firstSetResults.totalCount)%</p>
+            </div>
+
+            <!-- Второй график -->
+            @if (secondSetResults != null)
+            {
+                <div class="col-md-6">
+                    <h6>@secondSetName</h6>
+                    <div class="chart-container">
+                        <canvas @ref="chartSecondSetRef"></canvas>
+                    </div>
+                    <p>Успешность ОС: @GetSuccessRate(secondSetResults.successfulCount, secondSetResults.totalCount)%</p>
+                </div>
+            }
+        </div>
+
+        <!-- Таблица показателей -->
+        <table class="table mt-4">
+            <thead>
+                <tr>
+                    <th>Показатель</th>
+                    <th>Единицы измерения</th>
+                    <th>@firstSetName</th>
+                    @if (!string.IsNullOrEmpty(secondSetName))
+                    {
+                        <th>@secondSetName</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var indicatorName in new[]
+               {
+            "Максимальный небаланс по активной мощности",
+            "Максимальный небаланс по реактивной мощности",
+            "Усредненный суммарный небаланс по активной мощности",
+            "Усредненный суммарный небаланс по реактивной мощности",
+            "Среднее математическое ожидание",
+            "Среднеквадратичное отклонение",
+            "Успешность"
+            })
+                {
+                    <tr>
+                        <td>@indicatorName</td>
+                        <td>
+                            @if (indicatorName.Contains("активной мощности"))
+                            {
+                                @("МВт")
+                            }
+                            else if (indicatorName.Contains("реактивной мощности"))
+                            {
+                                @("МВАр")
+                            }
+                            else if (indicatorName.Contains("математическое ожидание") || indicatorName.Contains("отклонение"))
+                            {
+                                @("(о.е.)")
+                            }
+                            else
+                            {
+                                @("%")
+                            }
+                        </td>
+                        <td>
+                            @{
+                                var firstSetIndicator = SelectedReportWithIndicators.Indicators
+                                .FirstOrDefault(i => i.set_name == firstSetName);
+
+                                if (firstSetIndicator != null)
+                                {
+                                    @GetIndicatorValue(firstSetIndicator, indicatorName)
+                                }
+                            }
+                        </td>
+                        @if (!string.IsNullOrEmpty(secondSetName))
+                        {
+                            <td>
+                                @{
+                                    var secondSetIndicator = SelectedReportWithIndicators.Indicators
+                                    .FirstOrDefault(i => i.set_name == secondSetName);
+
+                                    if (secondSetIndicator != null)
+                                    {
+                                        @GetIndicatorValue(secondSetIndicator, indicatorName)
+                                    }
+                                }
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+
+@if (firstSetResults.totalCount > 0 && secondSetResults.totalCount > 0 && !isLoadedReport)
 {
     <div class="mt-4 text-center">
         <h5>Расчетный интервал: от @startDateTime до @endDateTime</h5>
