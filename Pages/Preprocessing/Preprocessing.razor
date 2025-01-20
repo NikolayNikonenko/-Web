@@ -3,10 +3,12 @@
 @using перенос_бд_на_Web.Services
 @using Microsoft.EntityFrameworkCore
 @using перенос_бд_на_Web.Pages.TM
+@using System.Threading.Channels;
 @inject ApplicationContext _context
 @inject DataFilterService _dataFilterService
 @inject ExperimentCorrData corrDataService
 @inject CalculationIntervalServiceForPTI CalculationIntervalService
+@inject IDbContextFactory<ApplicationContext> DbContextFactory
 
 <PageTitle>Предварительная подготовка файлов</PageTitle>
 
@@ -133,11 +135,27 @@
             currentSortColumn = columnName;
             isAscending = true;
         }
+        if (columnName == nameof(NedostovernayaTM.Status))
+        {
+            // Определяем порядок сортировки для статусов
+            var statusOrder = new Dictionary<string, int>
+            {
+                { "Недостоверная", 1 },
+                { "Сомнительная", 2 },
+                { "Достоверная", 3 }
+            };
 
-        // Применяем сортировку
-        filteredResultsTable = isAscending
-            ? filteredResultsTable.OrderBy(item => GetPropertyValue(item, columnName)).ToList()
-            : filteredResultsTable.OrderByDescending(item => GetPropertyValue(item, columnName)).ToList();
+            filteredResultsTable = isAscending
+                ? filteredResultsTable.OrderBy(item => statusOrder[item.Status]).ToList()
+                : filteredResultsTable.OrderByDescending(item => statusOrder[item.Status]).ToList();
+        }
+        else
+        {
+            // Применяем сортировку
+            filteredResultsTable = isAscending
+                ? filteredResultsTable.OrderBy(item => GetPropertyValue(item, columnName)).ToList()
+                : filteredResultsTable.OrderByDescending(item => GetPropertyValue(item, columnName)).ToList();
+        }
     }
 
     private object GetPropertyValue(NedostovernayaTM item, string propertyName)
@@ -176,6 +194,7 @@
         showDateIntervalFields = !showDateIntervalFields; // Переключение видимости
     }
 
+
     private async Task CalculateDTIForSelectedInterval(DateTime? startDate)
     {
         if (filteredData == null || !filteredData.Any())
@@ -183,15 +202,29 @@
             Console.WriteLine("Нет данных для расчёта.");
             return;
         }
+
         isCalculating = true;
         progress = 0;
 
+        // Создаём канал для обновления прогресса
+        var progressChannel = Channel.CreateUnbounded<int>();
+
+        // Задача для обработки обновлений прогресса
+        _ = Task.Run(async () =>
+        {
+            await foreach (var value in progressChannel.Reader.ReadAllAsync())
+            {
+                progress = value;
+                await InvokeAsync(StateHasChanged); // Обновление UI в основном потоке
+            }
+        });
+
         try
         {
-            // Предполагаем, что каждый срез имеет путь или идентификатор
+            // Список уникальных имён срезов
             var sliceNames = filteredData.Select(data => data.NumberOfSrez).Distinct().ToList();
 
-            // Извлекаем соответствующие пути из таблицы Slices
+            // Извлекаем пути к срезам из базы данных
             var slicePaths = await _context.slices
                 .Where(s => sliceNames.Contains(s.SliceName) && s.experiment_label == "Входные данные")
                 .Select(s => s.SlicePath)
@@ -200,16 +233,38 @@
             int totalSlices = slicePaths.Count;
             int processedSlices = 0;
 
-            foreach (var path in slicePaths)
-            {
-                CalculationDTI dtiCalculation = new CalculationDTI();
-                await Task.Run(() => dtiCalculation.CalculateDTIAndPTI(path, _context, startDate));
-                processedSlices++;
-                progress = (int)((processedSlices / (double)totalSlices) * 100);
-                StateHasChanged(); // Обновление UI
-            }
+            SemaphoreSlim semaphore = new SemaphoreSlim(4); // Ограничиваем до 4 параллельных потоков
 
-            Console.WriteLine("Расчёт завершён.");
+            // Обработка срезов
+            var tasks = slicePaths.Select(async path =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    using var context = await DbContextFactory.CreateDbContextAsync();
+                    CalculationDTI dtiCalculation = new CalculationDTI();
+
+                    // Выполнение расчёта
+                    await Task.Run(() => dtiCalculation.CalculateDTIAndPTI(path, context, startDate));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Ошибка при обработке {path}: {ex.Message}");
+                }
+                finally
+                {
+                    // Обновляем количество обработанных срезов
+                    Interlocked.Increment(ref processedSlices);
+
+                    // Отправляем обновление прогресса в канал
+                    int newProgress = (int)((processedSlices / (double)totalSlices) * 100);
+                    await progressChannel.Writer.WriteAsync(newProgress);
+
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(tasks); // Ожидание завершения всех задач
         }
         catch (Exception ex)
         {
@@ -217,12 +272,16 @@
         }
         finally
         {
+            // Закрываем канал прогресса
+            progressChannel.Writer.Complete();
+
             isCalculating = false;
-            progress = 100; // Устанавливаем прогресс на 100%
-            showCorrelationButton = true; // Показываем кнопку корреляции
-            StateHasChanged();   
+            progress = 100;
+            showCorrelationButton = true;
+            await InvokeAsync(StateHasChanged); // Финальное обновление UI
         }
     }
+
 
     private async Task CalculateCorrelation()
     {

@@ -10,6 +10,7 @@ using перенос_бд_на_Web.Services;
 using перенос_бд_на_Web.Pages.TM;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using перенос_бд_на_Web.Pages.Monitoring;
 
 namespace перенос_бд_на_Web
 {
@@ -75,6 +76,8 @@ namespace перенос_бд_на_Web
             builder.Services.AddScoped<ReliabilityAnalyzer>();
 
             builder.Services.AddScoped<ReportService>();
+            builder.Services.AddScoped<ExistingReportService>();
+
 
             AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 

@@ -215,7 +215,6 @@ namespace перенос_бд_на_Web.Pages.Preprocessing
                 Console.WriteLine($"Проведен расчет ДТИ перетока для ТМ № {numbersGen[s]}");
             }
 
-     
             CalculationPTI ptiCalculation = new CalculationPTI();
             ptiCalculation.CalculatePTI(Rastr, PathFile, context, startDate);
         }
