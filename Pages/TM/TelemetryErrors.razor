@@ -10,6 +10,7 @@
 @inject TelemetryMonitoringService MonitoringService
 @inject ValidationService ValidationService
 @inject ApplicationContext _context
+@inject CalculationIntervalServiceForCorrCalc calculationintervalserviceforcorrcalc
 @inject CorrData corr
 @inject IJSRuntime JS
 
@@ -111,10 +112,12 @@
 
     private bool isExperimentSortAscending = true;
 
+    private IntervalForCorrCalc lastInterval;
 
 
     protected override async Task OnInitializedAsync()
     {
+
         isLoading = true; // Устанавливаем флаг в true перед началом загрузки
         loadingMessage = "Получение данных из БД...";
         await LoadData();
@@ -127,6 +130,13 @@
     {
         try
         {
+            lastInterval = await calculationintervalserviceforcorrcalc.GetLastCalculationInterval();
+            if (lastInterval != null)
+            {
+                startDate = lastInterval.startDate;
+                endDate = lastInterval.endDate;
+            }
+
             // Загружаем все данные из таблицы
             tm = await _context.correlation_coefficients.AsNoTracking().ToListAsync();
 
@@ -507,6 +517,7 @@
         //ValidateDates();
         //isIntervalApplied = true;
         await LoadTMValues(isThinningEnabled, pruningInterval);
+        //HandleSubmit();
     }
 
     private async Task LoadTMValues(bool isThinningEnabled, int pruningInterval)
@@ -861,6 +872,24 @@
         return labels;
     }
 
+    private async Task HandleSubmit()
+    {
+        if (startDate.HasValue && endDate.HasValue)
+        {
+            await calculationintervalserviceforcorrcalc.SaveCalculationInterval(startDate.Value, endDate.Value);
+            lastInterval = await calculationintervalserviceforcorrcalc.GetLastCalculationInterval();
+
+            isIntervalApplied = true; // Интервал был применен, показываем вторую кнопку
+
+            Console.WriteLine($"Интервал сохранён: {startDate:dd.MM.yyyy HH:mm:ss} - {endDate:dd.MM.yyyy HH:mm:ss}");
+            StateHasChanged(); // Обновляем интерфейс
+        }
+        else
+        {
+            Console.WriteLine("Ошибка: Не все поля заполнены.");
+        }
+    }
+
 }
 
 
@@ -962,7 +991,7 @@
 
         isLoading = true;
         loadingMessage = "Данные обновляются";
-
+        HandleSubmit();
         await InvokeAsync(StateHasChanged); // Убедитесь, что интерфейс обновлен
         isLoading = false;
     }
@@ -1162,6 +1191,7 @@
         }
         finally
         {
+            //HandleSubmit();
             // Восстанавливаем исходное состояние из originalTMValues
             if (originalTMValues != null)
             {
@@ -1767,14 +1797,14 @@
     </div>
 }
 
-@* @if (lastInterval != null && hasPreparedData)
+@if (lastInterval != null)
 {
     <p style="margin-top: 20px;">
-        <b>ПТИ и ДТИ рассчитаны для интервала:</b>
+        <b>Расчет корреляции для входного набора данных проведен для интервала:</b>
         от: <span>@lastInterval.startDate.ToString("dd.MM.yy HH:mm:ss")</span>
         до: <span>@lastInterval.endDate.ToString("dd.MM.yy HH:mm:ss")</span>
     </p>
-} *@
+}
 
 @if (isLoading)
 {

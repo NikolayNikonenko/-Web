@@ -11,6 +11,7 @@ namespace перенос_бд_на_Web.Models
         public DbSet<ReactivePowerImbalance> reactive_power_imbalance { get; set; }
         public DbSet<FilePath> file_paths { get; set; }
         public DbSet<CalculationIntervalForPTI> calculationIntervalForPTIs { get; set; }
+        public DbSet<IntervalForCorrCalc> interval_for_corr_calc { get; set; }
         public DbSet<ConfigurationParameter> configuration_parameters { get; set; }
         public DbSet<Report> report { get; set; }
         public DbSet<Experiment> experiment { get; set; }
@@ -31,6 +32,12 @@ namespace перенос_бд_на_Web.Models
             {
                 entity.HasNoKey(); // Указываем, что таблица не имеет первичного ключа
                 entity.ToTable("calculationIntervalForPTIs"); // Если нужно привязать к таблице/представлению
+            });
+
+            modelBuilder.Entity<IntervalForCorrCalc>(entity =>
+            {
+                entity.HasNoKey(); // Указываем, что таблица не имеет первичного ключа
+                entity.ToTable("interval_for_corr_calc"); // Если нужно привязать к таблице/представлению
             });
 
 
